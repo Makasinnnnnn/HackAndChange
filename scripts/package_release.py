@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output", type=Path, default=ROOT.parent / "output/hackandchange/alfa-route-mvp-0.1.0.zip"
+        "--output", type=Path, default=ROOT.parent / "output/hackandchange/alfa-route-mvp-1.0.0.zip"
     )
     args = parser.parse_args()
     target = args.output.resolve()

@@ -16,3 +16,14 @@ AI вызывается только отдельной кнопкой «Уто�
 
 
 Проверен desktop/mobile сценарий с контролируемым ответом: исходная задача не меняется до подтверждения, новая формулировка применяется явно, ошибка AI не препятствует обычному маршруту. Это проверка UI и протокола, не реального качества модели.
+
+
+## Проверенный Windows Qwen 1.0
+
+13.11: Qwen/Qwen2.5-1.5B-Instruct-GGUF, revision 91cad51170dc346986eccefdc2dd33a9da36ead9, файл qwen2.5-1.5b-instruct-q4_k_m.gguf, 1117320736 bytes. SHA-256 6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e. Веса .private/models/qwen/. HF CLI не завершил загрузку, применена загрузка диапазонами с проверкой итогового хеша. Лицензия модели Apache-2.0.
+
+Runtime: https://github.com/ggml-org/llama.cpp/releases/tag/b7200 , ZIP llama-b7200-bin-win-cpu-x64.zip в .private/tools/. SHA-256 4c69e78ab94b2d05326f9c066ecf89587420eb3de9809c444cf24cd67c238030 проверена по metadata релиза. Старт ./scripts/start_local_llm.ps1 проверяет хеши, запускает скрыто, только loopback 127.0.0.1:18080, CPU 4 threads, context 2048. Если порт занят, оставляет процесс неизменным.
+
+Загрузка модели штатным CLI: hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF qwen2.5-1.5b-instruct-q4_k_m.gguf --revision 91cad51170dc346986eccefdc2dd33a9da36ead9 --local-dir .private/models/qwen . Источник https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF .
+
+В .env: LLM_MODE=local, LLM_BASE_URL=http://host.docker.internal:18080/v1, LLM_MODEL=qwen-local, LLM_ALLOW_EXTERNAL=false. Добавить compose.llm.yaml. Docker Desktop → host loopback /health реально вернул 200. Три синтетических запроса через адаптер дали валидный JSON за 1.89/1.09/0.90 s. На расплывчатой задаче модель предложила общую цель вместо уточнения; подтверждение пользователем остаётся обязательным. Это проверка запуска, не независимая оценка качества.

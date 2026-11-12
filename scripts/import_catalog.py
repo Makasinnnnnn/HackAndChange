@@ -88,9 +88,9 @@ def price_and_access(kind, row, labels, subscribed=False):
         access = "paid"
     elif "По подписке" in labels or subscribed:
         access = "subscription"
-    elif kind == "article" and row.get("IsPublic") is not True:
+    elif "Закрытый" in labels:
         access = "unknown"
-    elif "Открытый" in labels or (kind == "article" and row.get("IsPublic") is True):
+    elif "Открытый" in labels:
         access = "free"
     elif kind == "course" and cost == 0:
         access = "free"

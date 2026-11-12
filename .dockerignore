@@ -32,3 +32,11 @@ playwright-report
 **/playwright-report
 **/*.tsbuildinfo
 .playwright-mcp
+
+**/*.gguf
+**/*.ggml
+**/*.partial
+**/*.incomplete
+**/*.exe
+**/*.dll
+**/*.zip

@@ -22,7 +22,7 @@ def inspect(relative: str) -> list[str]:
         return problems
     data = path.read_bytes()
     if (
-        path.suffix in {".backup", ".dump", ".sql", ".sqlite", ".db", ".pem", ".key"}
+        path.suffix in {".backup", ".dump", ".sql", ".sqlite", ".db", ".pem", ".key", ".gguf", ".ggml", ".exe", ".dll", ".onnx", ".safetensors"}
         or ".private" in path.parts
     ):
         problems.append("private data or key file")

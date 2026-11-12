@@ -34,4 +34,10 @@ def test_course_null_price_is_free_but_subscription_is_preserved():
     assert importer.price_and_access("course", {"Cost": None}, set(), True) == (0, "subscription")
     assert importer.price_and_access("course", {"Cost": 3990}, {"Платный"}) == (3990, "paid")
     assert importer.price_and_access("podcast", {"Cost": None}, set()) == (None, "unknown")
-    assert importer.price_and_access("article", {"IsPublic": False}, {"Открытый"}) == (None, "unknown")
+    assert importer.price_and_access("article", {"IsPublic": False}, {"Открытый"}) == (None, "free")
+
+
+def test_article_access_uses_type_not_editor_flag():
+    assert importer.price_and_access("article", {"IsPublic": True}, {"Закрытый"}) == (None, "unknown")
+    assert importer.price_and_access("article", {"IsPublic": True}, set()) == (None, "unknown")
+    assert importer.price_and_access("article", {"IsPublic": True}, {"Платный"}) == (None, "paid")

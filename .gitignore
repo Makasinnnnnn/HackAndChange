@@ -35,3 +35,20 @@ playwright-report/
 Thumbs.db
 *.tsbuildinfo
 .playwright-mcp/
+
+# Local LLM weights, downloads, tools and release archives.
+*.gguf
+*.ggml
+*.partial
+*.incomplete
+*.part
+*.exe
+*.dll
+*.so
+*.zip
+*.zip.sha256
+*.pid
+*.tmp
+*.bak
+.vscode/
+.idea/
