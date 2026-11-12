@@ -1,0 +1,11 @@
+# Optional host-local Ollama or explicitly enabled compatible API.
+services:
+  api:
+    environment:
+      LLM_MODE: ${LLM_MODE:-local}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_ALLOW_EXTERNAL: ${LLM_ALLOW_EXTERNAL:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

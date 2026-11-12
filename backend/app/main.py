@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from .catalog import load_catalog
 from .engine import Engine
+from .llm import interpret
 from .models import FeedbackRequest, RecommendationRequest
 from .semantic import optional_encoder
 from .storage import Learner, Signal, make_engine, signals
@@ -167,7 +168,15 @@ def recommendations(
     user.profile = body.profile.model_dump()
     user.last_query = body.query.strip()
     db.commit()
-    return engine.recommend(body.query, body.profile, signals(db, user.id), body.limit)
+    intent, status = interpret(body.query)
+    route = engine.recommend(body.query, body.profile, signals(db, user.id), body.limit)
+    if intent:
+        route.notice = ((route.notice + " ") if route.notice else "") + "AI предлагает формулировку задачи: " + intent.goal
+        if not route.items and intent.clarification:
+            route.clarification = intent.clarification
+    elif status != "disabled":
+        route.notice = ((route.notice + " ") if route.notice else "") + "AI-помощник недоступен; маршрут рассчитан обычным способом."
+    return route
 
 
 @app.post("/api/recommendations/baseline")
