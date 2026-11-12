@@ -26,3 +26,12 @@ def test_unknown_routes_are_not_fabricated(monkeypatch, tmp_path):
 
 def test_paid_descriptions_are_bounded():
     assert len(importer.plain("<p>" + ("Содержание " * 200) + "</p>", 180)) == 180
+
+
+def test_course_null_price_is_free_but_subscription_is_preserved():
+    assert importer.price_and_access("course", {"Cost": None}, set()) == (0, "free")
+    assert importer.price_and_access("course", {"Cost": None}, {"По подписке"}) == (0, "subscription")
+    assert importer.price_and_access("course", {"Cost": None}, set(), True) == (0, "subscription")
+    assert importer.price_and_access("course", {"Cost": 3990}, {"Платный"}) == (3990, "paid")
+    assert importer.price_and_access("podcast", {"Cost": None}, set()) == (None, "unknown")
+    assert importer.price_and_access("article", {"IsPublic": False}, {"Открытый"}) == (None, "unknown")

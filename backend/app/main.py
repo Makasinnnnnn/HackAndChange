@@ -154,6 +154,8 @@ def bootstrap(
         "catalog_version": engine.version,
         "semantic_model": engine.semantic.model_id if engine.semantic else None,
         "semantic_fallback": engine.semantic is None,
+        "llm_enabled": os.getenv("LLM_MODE", "off") in {"local", "api"},
+        "llm_external": os.getenv("LLM_MODE") == "api",
         "industries": sorted({industry for m in engine.materials for industry in m.industries}),
     }
 
@@ -168,15 +170,14 @@ def recommendations(
     user.profile = body.profile.model_dump()
     user.last_query = body.query.strip()
     db.commit()
+    return engine.recommend(body.query, body.profile, signals(db, user.id), body.limit)
+
+
+@app.post("/api/intent")
+def intent_assistant(body: RecommendationRequest):
     intent, status = interpret(body.query)
-    route = engine.recommend(body.query, body.profile, signals(db, user.id), body.limit)
-    if intent:
-        route.notice = ((route.notice + " ") if route.notice else "") + "AI предлагает формулировку задачи: " + intent.goal
-        if not route.items and intent.clarification:
-            route.clarification = intent.clarification
-    elif status != "disabled":
-        route.notice = ((route.notice + " ") if route.notice else "") + "AI-помощник недоступен; маршрут рассчитан обычным способом."
-    return route
+    return {"status": status, "intent": intent.model_dump() if intent else None}
+
 
 
 @app.post("/api/recommendations/baseline")

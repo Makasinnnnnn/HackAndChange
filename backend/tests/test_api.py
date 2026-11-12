@@ -108,3 +108,19 @@ def test_database_failure_returns_safe_503(client, monkeypatch):
     response = client.get("/api/ready")
     assert response.status_code == 503
     assert "internal database" not in response.text
+
+
+def test_llm_is_explicit_and_does_not_change_recommendations(client, monkeypatch):
+    from app.llm import Intent
+    calls = []
+    def assist(query):
+        calls.append(query)
+        return Intent(goal="Продажи", clarification=None), "ready"
+    monkeypatch.setattr("app.main.interpret", assist)
+    payload = {"query": "Хочу привлечь клиентов"}
+    assert client.post("/api/recommendations", json=payload).status_code == 200
+    assert not calls
+    result = client.post("/api/intent", json=payload).json()
+    assert result["intent"]["goal"] == "Продажи"
+    assert calls == [payload["query"]]
+    assert client.get("/api/bootstrap").json()["query"] == payload["query"]

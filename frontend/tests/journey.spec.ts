@@ -56,3 +56,26 @@ test('catalog search and jury comparison calculate real responses',async({page})
   await expect(page.locator('.comparison-column').last().locator('.diagnostic[open]')).toContainText('relevance');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
 });
+
+
+test('AI suggestion requires explicit acceptance and failure keeps original task',async({page})=>{
+  await page.route('**/api/bootstrap',async route=>{
+    const response=await route.fetch();const data=await response.json();
+    await route.fulfill({json:{...data,llm_enabled:true}});
+  });
+  await page.route('**/api/intent',route=>route.fulfill({json:{status:'ready',intent:{goal:'Как привлечь клиентов в кофейню',clarification:null}}}));
+  await page.reload();
+  const task=page.getByLabel('Ваша бизнес-задача');
+  await task.fill('Хочу больше клиентов');
+  await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
+  await expect(page.getByText('Предложение AI',{exact:true})).toBeVisible();
+  await expect(task).toHaveValue('Хочу больше клиентов');
+  await page.getByRole('button',{name:'Применить формулировку',exact:true}).click();
+  await expect(task).toHaveValue('Как привлечь клиентов в кофейню');
+  await page.route('**/api/intent',route=>route.fulfill({json:{status:'unavailable',intent:null}}));
+  await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
+  await expect(page.getByText(/AI-помощник сейчас недоступен/)).toBeVisible();
+  await page.getByRole('button',{name:'Построить маршрут',exact:true}).click();
+  await expect(page.locator('.route-card').first()).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+});

@@ -42,3 +42,10 @@ def test_validated_response_and_fallback(monkeypatch):
     assert interpret("Продажи")[0].goal == "Увеличить продажи"
     response.answer = '{"goal":"Продажи","invented_course":"123"}'
     assert interpret("Продажи") == (None, "unavailable")
+
+
+def test_cloud_alias_blocked_in_local_mode(monkeypatch):
+    monkeypatch.setenv("LLM_MODE", "local")
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("LLM_MODEL", "qwen:cloud")
+    assert interpret("Продажи")[1] == "configuration_blocked"

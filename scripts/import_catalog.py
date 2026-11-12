@@ -79,6 +79,26 @@ def source_url(value: str, kind: str) -> str | None:
     return None
 
 
+def price_and_access(kind, row, labels, subscribed=False):
+    # Organizer message886: NULL means zero course price, not unrestricted access.
+    cost = row.get("Cost")
+    if kind == "course" and cost is None:
+        cost = 0
+    if "Платный" in labels or (cost is not None and cost > 0):
+        access = "paid"
+    elif "По подписке" in labels or subscribed:
+        access = "subscription"
+    elif kind == "article" and row.get("IsPublic") is not True:
+        access = "unknown"
+    elif "Открытый" in labels or (kind == "article" and row.get("IsPublic") is True):
+        access = "free"
+    elif kind == "course" and cost == 0:
+        access = "free"
+    else:
+        access = "unknown"
+    return cost, access
+
+
 def import_catalog(container: str) -> list[Material]:
     inspected = subprocess.run(
         ["docker", "inspect", "--format", "{{json .Config.Labels}}", container],
@@ -139,9 +159,6 @@ def import_catalog(container: str) -> list[Material]:
     podcast_subs = set(
         query('SELECT coalesce(json_agg(DISTINCT "PodcastId"::text),\'[]\') FROM "PodcastSubscriptions"')
     )
-    tariff_costs = query(
-        'SELECT coalesce(json_object_agg(k,cost),\'{}\') FROM (SELECT "CourseId"::text k,min("Cost") cost FROM "CourseTariffBindings" WHERE "Cost">0 GROUP BY 1) x'
-    )
     output = []
     for table, (kind, entity_type) in SOURCES.items():
         available = {c["column_name"] for c in columns if c["table_name"] == table}
@@ -159,19 +176,10 @@ def import_catalog(container: str) -> list[Material]:
             if meta and meta["status"] != "Опубликовано":
                 continue
             labels = {types.get(row.get("TypeId")), meta.get("access_label")}
-            cost = row.get("Cost") or (tariff_costs.get(row["Id"]) if kind == "course" else None)
-            if "Платный" in labels or (cost is not None and cost > 0):
-                access = "paid"
-            elif "По подписке" in labels or row["Id"] in (
+            subscribed = row["Id"] in (
                 course_subs if kind == "course" else podcast_subs if kind == "podcast" else set()
-            ):
-                access = "subscription"
-            elif kind == "article" and row.get("IsPublic") is not True:
-                access = "unknown"
-            elif "Открытый" in labels or (kind == "article" and row.get("IsPublic") is True):
-                access = "free"
-            else:
-                access = "unknown"
+            )
+            cost, access = price_and_access(kind, row, labels, subscribed)
             output.append(
                 Material(
                     id=kind + ":" + row["Id"],

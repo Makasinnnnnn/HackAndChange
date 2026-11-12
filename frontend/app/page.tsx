@@ -40,6 +40,10 @@ export default function Home() {
   const [selected,setSelected] = useState<Material|null>(null);
   const [profileOpen,setProfileOpen] = useState(false);
   const [mobileMenu,setMobileMenu] = useState(false);
+  const [intent,setIntent] = useState<{goal:string;clarification:string|null}|null>(null);
+  const [aiBusy,setAiBusy] = useState(false);
+  const [aiEnabled,setAiEnabled] = useState(false);
+  const [aiExternal,setAiExternal] = useState(false);
   const [busy,setBusy] = useState(false);
   const [ready,setReady] = useState(false);
   const [error,setError] = useState('');
@@ -53,7 +57,7 @@ export default function Home() {
   useEffect(()=>{let active=true; Promise.all([
     api<{profile:Profile;query:string;signals:Record<string,string>;catalog_mode:string;catalog_count:number;semantic_model:string|null;industries:string[]}>('/bootstrap'),
     api<Persona[]>('/demo/profiles'), api<Evaluation>('/evaluation/results')
-  ]).then(([data,people,e])=>{if(!active)return;setProfile(data.profile);setQuery(data.query);setHistory(data.signals);setInfo(data);setPersonas(people);setEvaluation(e);setReady(true);}).catch(()=>{if(active)setError('Не удалось подключиться к приложению. Обновите страницу после запуска сервера.');}); return()=>{active=false;};},[]);
+  ]).then(([data,people,e])=>{if(!active)return;setProfile(data.profile);setQuery(data.query);setHistory(data.signals);setInfo(data);setAiEnabled(Boolean((data as typeof data & {llm_enabled?:boolean}).llm_enabled));setAiExternal(Boolean((data as typeof data & {llm_external?:boolean}).llm_external));setPersonas(people);setEvaluation(e);setReady(true);}).catch(()=>{if(active)setError('Не удалось подключиться к приложению. Обновите страницу после запуска сервера.');}); return()=>{active=false;};},[]);
 
   useEffect(()=>{if(selected){dialog.current?.showModal();}else{dialog.current?.close();}},[selected]);
   useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(id);},[toast]);
@@ -69,6 +73,12 @@ export default function Home() {
   async function recommend(override?:string){
     const value=override??query;if(override!==undefined)setQuery(override);setBusy(true);setError('');
     try{setRoute(await api('/recommendations',{query:value,profile}));setTab('route');}catch(e){setError((e as Error).message);}finally{setBusy(false);}
+  }
+  async function clarifyTask(){
+    setAiBusy(true);setError('');setIntent(null);
+    try{const result=await api<{status:string;intent:{goal:string;clarification:string|null}|null}>('/intent',{query});
+      if(result.intent)setIntent(result.intent);else setError('AI-помощник сейчас недоступен. Можно построить маршрут по исходной задаче.');
+    }catch{setError('AI-помощник не ответил. Можно построить маршрут обычным способом.');}finally{setAiBusy(false);}
   }
   async function compare(){setBusy(true);setError('');try{setComparison(await api('/demo/compare',{query,profile}));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   async function feedback(materialId:string,signal:string){setBusy(true);setError('');try{
@@ -118,10 +128,12 @@ export default function Home() {
         {(tab==='route'||tab==='jury')&&<div className="workspace">
           <section className="task-card" aria-labelledby="task-title"><div className="section-top"><span className="section-icon"><MessageCircle size={19}/></span><div><h2 id="task-title">Что сейчас важно для вашего дела?</h2><p>Опишите задачу своими словами — начнём с неё.</p></div><span className="optional-label">ШАГ 01</span></div>
             <form onSubmit={e=>{e.preventDefault();if(tab==='jury')compare();else recommend();}}>
-              <label className="sr-only" htmlFor="business-task">Ваша бизнес-задача</label><textarea disabled={busy} ref={textarea} id="business-task" placeholder="Например: открыл кофейню, клиентов пока мало. Хочу понять, с чего начать продвижение…" maxLength={1500} value={query} onChange={e=>{setQuery(e.target.value);setComparison(null);}}/>
+              <label className="sr-only" htmlFor="business-task">Ваша бизнес-задача</label><textarea disabled={busy} ref={textarea} id="business-task" placeholder="Например: открыл кофейню, клиентов пока мало. Хочу понять, с чего начать продвижение…" maxLength={1500} value={query} onChange={e=>{setQuery(e.target.value);setIntent(null);setComparison(null);}}/>
               <div className="task-controls"><div className="pace-options" aria-label="Темп обучения"><button type="button" disabled={busy} aria-pressed={profile.urgency==='quick'} className={profile.urgency==='quick'?'active':''} onClick={()=>patchProfile('urgency',profile.urgency==='quick'?'':'quick')}>Быстро применить</button><button type="button" disabled={busy} aria-pressed={profile.urgency==='deep'} className={profile.urgency==='deep'?'active':''} onClick={()=>patchProfile('urgency',profile.urgency==='deep'?'':'deep')}>Разобраться глубже</button></div><span className="char-count">{query.length}/1500</span></div>
               <div className="task-submit"><span><Check size={14}/> Можно начать без анкеты</span><button className="primary" type="submit" disabled={busy||!ready}>{busy?<LoaderCircle className="spinning" size={17}/>:<ArrowRight size={17}/>} {tab==='jury'?'Сравнить алгоритмы':'Построить маршрут'}</button></div>
             </form>
+            {aiEnabled&&<div className="honesty-note"><Sparkles size={17}/><div><button className="text-button" type="button" disabled={busy||aiBusy||!query.trim()} onClick={clarifyTask}>{aiBusy?'AI уточняет задачу…':'Уточнить задачу с AI'}</button><p>{aiExternal?'Текст задачи будет передан настроенному AI-сервису. Уберите имена, контакты и другие личные сведения.':'Текст задачи обрабатывается локальным AI-помощником.'} Проверьте предложенную формулировку перед применением.</p></div></div>}
+            {intent&&<div className="empty-state"><h3>Предложение AI</h3><p>{intent.goal}</p>{intent.clarification&&<p>{intent.clarification}</p>}<button className="secondary" disabled={busy} onClick={()=>{setQuery(intent.goal);setIntent(null);setComparison(null);textarea.current?.focus();}}>Применить формулировку</button><button className="text-button" onClick={()=>setIntent(null)}>Оставить мою задачу</button></div>}
           </section>
           <aside className={'context-card '+(profileOpen?'expanded':'')}><button className="context-toggle" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="section-icon pale"><SlidersHorizontal size={18}/></span><span><strong>Ваш контекст</strong><small>Точнее, если расскажете о себе</small></span><Plus size={17}/></button>{profileForm}</aside>
         </div>}
