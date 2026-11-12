@@ -1,0 +1,11 @@
+# Use only locally. Generated metadata stays outside the image and Git.
+services:
+  api:
+    environment:
+      CATALOG_MODE: full
+      CATALOG_PATH: /private/catalog.json
+    volumes:
+      - type: bind
+        source: ./.private/catalog.json
+        target: /private/catalog.json
+        read_only: true

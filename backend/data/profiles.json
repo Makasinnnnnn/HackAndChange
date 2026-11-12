@@ -1,0 +1,8 @@
+[
+  {"id":"cafe","name":"Анна · небольшая кофейня","situation":"Три месяца после открытия, мало новых клиентов","query":"Открыл кофейню три месяца назад, клиентов мало. Хочу привлечь новых клиентов","profile":{"stage":"start","industry":"HoReCa","experience":"beginner","urgency":"quick"}},
+  {"id":"finance","name":"Михаил · магазин","situation":"Продажи есть, но не хватает денег на платежи","query":"В магазине кассовый разрыв. Нужен план денежных поступлений и платежей","profile":{"stage":"growth","industry":"Торговля","experience":"experienced","format":"document","urgency":"quick"}},
+  {"id":"idea","name":"Дарья · своё дело","situation":"Есть идея, нет опыта и истории обучения","query":"Хочу открыть свой бизнес с нуля. С чего начать проверку идеи?","profile":{"stage":"idea","experience":"beginner"}},
+  {"id":"team","name":"Алексей · агентство","situation":"Выросла команда, собственник перегружен","query":"Как делегировать задачи сотрудникам и управлять растущей командой?","profile":{"stage":"growth","industry":"Услуги","experience":"experienced","urgency":"deep"}},
+  {"id":"tax","name":"Ольга · интернет-магазин","situation":"Нужно подготовить документы для бухгалтера","query":"Нужен чек-лист документов для налоговой отчётности и вопросов бухгалтеру","profile":{"stage":"start","industry":"Торговля","format":"document","urgency":"quick"}},
+  {"id":"unknown","name":"Новый пользователь","situation":"Без анкеты и без истории — нечёткая задача","query":"Помогите с бизнесом","profile":{}}
+]

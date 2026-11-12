@@ -1,0 +1,37 @@
+# Organizer data and local evidence must never enter Git.
+.private/
+data/private/
+*.backup
+*.dump
+*.sql
+*.sqlite*
+*.db
+*.bin
+*.onnx
+*.safetensors
+*.pt
+*.npy
+*.npz
+*.parquet
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+
+# Local runtimes and generated files.
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.next/
+dist/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+.playwright-mcp/

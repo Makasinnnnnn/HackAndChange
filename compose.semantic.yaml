@@ -1,0 +1,26 @@
+services:
+  model-download:
+    profiles: ["models"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: semantic
+    entrypoint: ["python", "scripts/download_model.py"]
+    volumes:
+      - ./.private/models/e5:/app/.private/models/e5
+  api:
+    build:
+      target: semantic
+    environment:
+      SEMANTIC_MODEL_DIR: /models/e5
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - type: bind
+        source: ./.private/models/e5
+        target: /models/e5
+        read_only: true
+    healthcheck:
+      start_period: 180s
+      retries: 60

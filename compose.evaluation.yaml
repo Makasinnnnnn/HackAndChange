@@ -1,0 +1,9 @@
+services:
+  api:
+    environment:
+      EVALUATION_PATH: /evaluation/results.json
+    volumes:
+      - type: bind
+        source: ./.private/evaluation-demo/results.json
+        target: /evaluation/results.json
+        read_only: true
