@@ -33,7 +33,7 @@
 
 `Statuses` содержит «Опубликовано», «Черновик», «Снято с публикации», «Архив» и статусы прохождения. Следовательно, один справочник имеет несколько контекстов. Наличие StatusId само по себе не делает материал доступным.
 
-Стоимость и доступ: `Courses.Cost`, `CourseTariffBindings`, `CourseSubscriptions`, `SubscriptionTariffs`, `Podcasts.Cost`, `PodcastSubscriptions`, `IsClosed` и `Articles.IsPublic` рассматриваются совместно. NULL цены **не** равен бесплатности. Тело Lessons/EmbedItems не нужно для первого ранжирования и не передаётся в API.
+Стоимость и доступ: `Courses.Cost`, `CourseTariffBindings`, `CourseSubscriptions`, `SubscriptionTariffs`, `Podcasts.Cost`, `PodcastSubscriptions`, `IsClosed` и `Articles.IsPublic` рассматриваются совместно. Уточнение организаторов, полученное позднее: именно `Courses.Cost = NULL` означает бесплатный курс. На прочие таблицы правило не распространяется. Текущий импорт ещё использует прежнюю консервативную классификацию; требуется отдельно сверить тарифы и подписочный доступ, см. `organizer-clarifications.md`. Тело Lessons/EmbedItems не нужно для первого ранжирования и не передаётся в API.
 
 ## История и отсутствующие признаки
 
