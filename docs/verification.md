@@ -48,3 +48,5 @@ check_links.py: 966 уникальных URL, 3 попытки с TLS certificat
 Чистый ZIP 1.0 реально собран и запущен на Windows в .private/release-validation-1-0, отдельный проект hac-release-verify, порт 3081 и новый том: 8 smoke passed, feedback записан/прочитан. Новая production-сборка 1.1 также реально прошла, 47 pytest с E5, 10 E2E desktop/mobile и ruff/typecheck. FULL+E5+Qwen smoke 8 passed. Replay исходной обезличенной истории: 18 курсов приняты API и прочитаны через progress, все исключены из следующих рекомендаций.
 
 PDF/PPTX 1.1: 9 слайдов, все рендеры просмотрены, package/layout/font/import без findings. Первый слайд содержит ссылку на GitHub. Не утверждается ручной просмотр в PowerPoint или выступление человека.
+
+ZIP 1.1 также реально собран на Windows с новым томом hac-release-verify11 и портом 3082, 8 smoke passed. Проверочные контейнеры/тома после проверки собственных меток удалены. CI tag/main/branch 1.1 и release workflow SUCCESS; идентификаторы записаны в worklog.
