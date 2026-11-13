@@ -33,7 +33,7 @@ SOURCES = {
 }
 # Only these two route patterns have independent public source confirmation.
 CONFIRMED_PATHS = {"article": "articles", "course": "courses"}
-ALLOWED_COLUMNS = {"Id", "Title", "Description", "Url", "Duration", "Cost", "IsClosed", "IsPublic", "TypeId"}
+ALLOWED_COLUMNS = {"Id", "Title", "Description", "Url", "Duration", "Cost", "IsClosed", "IsPublic", "TypeId", "Target"}
 
 
 class PlainText(HTMLParser):
@@ -77,6 +77,15 @@ def source_url(value: str, kind: str) -> str | None:
         return "https://kurs.alfabank.ru/" + CONFIRMED_PATHS[kind] + "/" + value + "/"
     # Never invent a route for a source type whose path is not established.
     return None
+
+
+AUDIENCE = {"Без опыта": "beginner", "С опытом": "experienced"}
+INDUSTRY_LABELS = {"B2B", "B2G", "ECom", "HoReСa", "HoReCa", "Marketplace", "Бухгалтерия", "Оптовая торговля", "Производство", "Розница", "Строительство и недвижимость", "Транспорт и логистика", "Услуги", "Финансы и страхование"}
+
+
+def normalize_audience(labels):
+    experience = {AUDIENCE[label] for label in labels if label in AUDIENCE}
+    return list(dict.fromkeys("HoReCa" if label == "HoReСa" else label for label in labels if label in INDUSTRY_LABELS)), next(iter(experience)) if len(experience) == 1 else None
 
 
 def price_and_access(kind, row, labels, subscribed=False):
@@ -180,14 +189,24 @@ def import_catalog(container: str) -> list[Material]:
                 course_subs if kind == "course" else podcast_subs if kind == "podcast" else set()
             )
             cost, access = price_and_access(kind, row, labels, subscribed)
+            industries, difficulty = normalize_audience(meta.get("industries", []))
+            for topic in meta.get("topics", []):
+                mapped_industry = {"Услуги": "Услуги", "HoReCa": "HoReCa", "Ретейл": "Розница"}.get(topic)
+                if mapped_industry and mapped_industry not in industries:
+                    industries.append(mapped_industry)
+            description_limit = 180 if access != "free" else 400
+            description = plain(row.get("Description"), description_limit)
+            if kind == "course" and row.get("Target"):
+                audience = plain(row["Target"], 40 if access != "free" else 100)
+                description = description[:description_limit - len(audience) - 1] + " " + audience
             output.append(
                 Material(
                     id=kind + ":" + row["Id"],
                     source_type=kind,
                     title=plain(row["Title"], 250),
-                    description=plain(row.get("Description"), 180 if access != "free" else 400),
+                    description=description,
                     topics=meta.get("topics", []),
-                    industries=meta.get("industries", []),
+                    industries=industries,
                     tags=meta.get("tags", []),
                     access=access,
                     price=cost,
@@ -195,7 +214,7 @@ def import_catalog(container: str) -> list[Material]:
                     url=source_url(row.get("Url"), kind),
                     provenance="organizer",
                     stage=[],
-                    difficulty=None,
+                    difficulty=difficulty,
                 )
             )
     return output

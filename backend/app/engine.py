@@ -1,6 +1,6 @@
-"""Deterministic lexical retrieval and evidence-based personal reranking.
+"""Lexical retrieval, optional local embeddings and evidence-based personal reranking.
 
-This is a lexical/metadata system, not an embedding model or a generative LLM.
+Generative intent assistance is separate from material selection.
 """
 
 from __future__ import annotations
@@ -25,10 +25,12 @@ WEIGHTS = {
 SEMANTIC_CONFIG = {
     "floor": 0.81,
     "margin": 0.008,
-    "lexical_evidence": 0.18,
+    "lexical_evidence": 0.10,
     "offset": 0.65,
     "span": 0.35,
     "weight": 0.4,
+    "unknown_floor": 0.84,
+    "unknown_word_floor": 0.05,
 }
 TOPICS = {
     "Маркетинг": ("клиент", "продвиж", "маркет", "реклам", "кофейн", "посетител", "соцсет", "привлеч"),
@@ -45,7 +47,8 @@ TOPICS = {
         "ценообраз",
     ),
     "Налоги": ("налог", "усн", "ндс", "бухгалт", "отчет", "отчёт"),
-    "Команда": ("сотрудник", "команд", "найм", "нанят", "персонал", "делегир", "работник"),
+    "Франчайзинг": ("франшиз", "франчайз"),
+    "Команда": ("сотрудник", "команд", "найм", "нанят", "персонал", "делегир", "работник", "подчиненн", "передать ответственность"),
     "Запуск бизнеса": ("откры", "начат", "запуск", "зарегистр", "бизнес-план", "с нуля", "идея"),
     "Продажи": ("продаж", "продав", "конверс", "сделк", "воронк", "возражен"),
     "Право": ("договор", "юрист", "право", "контрагент", "соглашен"),
@@ -80,7 +83,53 @@ STOP_WORDS = {
 
 def topics_for(text: str) -> list[str]:
     lowered = text.casefold().replace("ё", "е")
-    return [topic for topic, stems in TOPICS.items() if any(s.replace("ё", "е") in lowered for s in stems)]
+    topics = [topic for topic, stems in TOPICS.items() if any(s.replace("ё", "е") in lowered for s in stems)]
+    if lowered.strip() in {"ип", "ооо"} and "Запуск бизнеса" not in topics:
+        topics.append("Запуск бизнеса")
+    return topics
+
+
+TOPIC_ALIASES = {"Управление командой": "Команда", "Лидерство": "Команда", "Законы": "Право", "Первые шаги": "Запуск бизнеса", "Регистрация бизнеса": "Запуск бизнеса", "Финансы и учет": "Финансы", "Финансы и учёт": "Финансы", "Маркeтплейсы": "Маркетплейсы"}
+
+
+def material_topics(material):
+    return {TOPIC_ALIASES.get(topic, topic) for topic in material.topics}
+
+
+def industry_key(value):
+    return value.casefold().replace("ё", "е").translate(str.maketrans({"c": "с", "a": "а", "e": "е", "o": "о"}))
+
+
+SECTOR_TERMS = {
+    "medical": ("лаборатор", "медицин", "клиник", "инвитро"),
+    "beauty": ("маникюр", "бьюти", "салон красоты", "парикмахер", "барбершоп"),
+    "food": ("кофейн", "кафе", "ресторан", "пекарн"),
+    "construction": ("строитель", "ремонт квартир", "недвижим"),
+    "marketplace": ("маркетплейс", "wildberries", "ozon"),
+}
+
+
+def sectors_for(value):
+    text = value.casefold()
+    return {sector for sector, terms in SECTOR_TERMS.items() if any(term in text for term in terms)}
+
+
+def retrieval_query(query):
+    lowered = query.casefold().replace("ё", "е")
+    additions = []
+    if any(stem in lowered for stem in ("подчиненн", "передать ответственность", "делегир")):
+        additions.append("делегирование полномочия распределение задач управление командой")
+    if "франшиз" in lowered or "франчайз" in lowered:
+        additions.append("франчайзинг выбор покупка франшизы")
+    if any(stem in lowered for stem in ("открыт", "запуст", "с нуля")):
+        additions.append("запуск бизнеса бизнес-план стартовые расходы")
+    if lowered.strip() in {"ип", "ооо"}:
+        additions.append("регистрация бизнеса индивидуальный предприниматель общество с ограниченной ответственностью")
+    if lowered.strip() in {"налог", "налоги", "налогообложение"}:
+        additions.append("налогообложение налоговый учет")
+    if lowered.strip() in {"кофе", "кафе", "кофейня"}:
+        additions.append("кофейня кафе открытие управление")
+    return query + (" " + " ".join(additions) if additions else "")
 
 
 class Engine:
@@ -95,7 +144,7 @@ class Engine:
             self.word_matrix = self.word.fit_transform(self.documents)
             self.char_matrix = self.char.fit_transform(self.documents)
         self.semantic = semantic
-        self.algorithm_id = "e5-hybrid-personal-v1" if semantic else "lexical-personal-v1"
+        self.algorithm_id = "e5-hybrid-personal-v2" if semantic else "lexical-personal-v2"
         self.semantic_matrix = semantic.encode(self.documents) if semantic and materials else None
 
     def recommend(
@@ -114,7 +163,7 @@ class Engine:
         meaningful = [
             t for t in re.findall(r"[а-яa-z0-9]+", query.casefold()) if t not in STOP_WORDS and len(t) > 2
         ]
-        vague = not query or (not inferred_topics and len(meaningful) < 2)
+        vague = not query or (not inferred_topics and not meaningful)
         active = [k for k, v in profile.model_dump().items() if v is not None]
         route_args = dict(
             route_id=str(uuid4()),
@@ -143,12 +192,13 @@ class Engine:
                 excluded_count=0,
                 candidate_count=0,
             )
-        word_scores = (self.word_matrix @ self.word.transform([query]).T).toarray().ravel()
-        char_scores = (self.char_matrix @ self.char.transform([query]).T).toarray().ravel()
+        search = query if baseline else retrieval_query(query)
+        word_scores = (self.word_matrix @ self.word.transform([search]).T).toarray().ravel()
+        char_scores = (self.char_matrix @ self.char.transform([search]).T).toarray().ravel()
         lexical = 0.45 * word_scores + 0.55 * char_scores
         semantic_scores = None
         if self.semantic and not baseline:
-            semantic_scores = (self.semantic_matrix @ self.semantic.encode([query], query=True).T).ravel()
+            semantic_scores = (self.semantic_matrix @ self.semantic.encode([search], query=True).T).ravel()
         if (
             not inferred_topics
             and float(word_scores.max()) < 0.10
@@ -167,8 +217,8 @@ class Engine:
         relevance = []
         lexical_evidence = []
         for i, material in enumerate(self.materials):
-            matching_topics = set(inferred_topics) & set(material.topics)
-            lexical_relevance = min(1.0, float(lexical[i]) + (0.20 if matching_topics else 0))
+            matching_topics = set(inferred_topics) & material_topics(material)
+            lexical_relevance = min(1.0, float(lexical[i]) + ((0.20 if baseline else 0.12) if matching_topics else 0))
             lexical_evidence.append(lexical_relevance)
             semantic_relevance = (
                 max(0.0, (float(semantic_scores[i]) - SEMANTIC_CONFIG["offset"]) / SEMANTIC_CONFIG["span"])
@@ -186,7 +236,16 @@ class Engine:
             )
         candidates = []
         excluded = 0
+        requested_sectors = sectors_for(query)
+        starting = "Запуск бизнеса" in inferred_topics
+        closing_requested = any(term in query.casefold() for term in ("закры", "ликвид", "прекрат"))
         for i, material in enumerate(self.materials):
+            title = material.title.casefold()
+            title_sectors = sectors_for(title)
+            if not baseline and requested_sectors and title_sectors and requested_sectors.isdisjoint(title_sectors):
+                continue
+            if not baseline and starting and not closing_requested and any(term in title for term in ("закрыть", "ликвидац", "прекращение деятельности")) and not any(term in title for term in ("открыть", "открытие", "запуск")):
+                continue
             if (
                 semantic_scores is not None
                 and lexical_evidence[i] < SEMANTIC_CONFIG["lexical_evidence"]
@@ -204,7 +263,7 @@ class Engine:
             if semantic_scores is not None:
                 signals["semantic_similarity"] = round(float(semantic_scores[i]), 6)
             reasons = []
-            matched_topics = set(inferred_topics) & set(material.topics)
+            matched_topics = set(inferred_topics) & material_topics(material)
             if matched_topics:
                 reasons.append("По задаче: " + ", ".join(sorted(matched_topics)).lower())
             else:
@@ -217,10 +276,11 @@ class Engine:
                 checks = {
                     "industry": None
                     if not profile.industry or not material.industries
-                    else float(profile.industry in material.industries),
+                    else float(any(industry_key(profile.industry) == industry_key(value) for value in material.industries)),
                     "stage": None
-                    if not profile.stage or not material.stage
-                    else float(profile.stage in material.stage),
+                    if not profile.stage or (not material.stage and "Запуск бизнеса" not in material_topics(material))
+                    else float(profile.stage in material.stage) if material.stage
+                    else float(profile.stage in {"idea", "start"}),
                     "experience": None
                     if not profile.experience or material.difficulty is None
                     else float(profile.experience == material.difficulty),
@@ -238,7 +298,7 @@ class Engine:
                 }
                 labels = {
                     "industry": f"Есть отраслевая метка «{profile.industry}»",
-                    "stage": "Подходит для выбранного этапа бизнеса",
+                    "stage": "Подходит для выбранного этапа бизнеса" if material.stage else "В каталоге это раздел о запуске бизнеса",
                     "experience": "Соответствует указанному опыту",
                     "format": "Выбран предпочитаемый формат: " + FORMAT_NAMES[material.source_type],
                     "urgency": "Подходит для быстрого применения"
@@ -260,11 +320,14 @@ class Engine:
                     signals["feedback"] = float(any(set(m.topics) & set(material.topics) for m in liked))
                     if signals["feedback"]:
                         reasons.append("Тема связана с материалами, которые вы отметили полезными")
-                denom = sum(WEIGHTS[k] for k in signals if k in WEIGHTS)
-                score = sum(WEIGHTS[k] * v for k, v in signals.items() if k in WEIGHTS) / denom
+                bonus = sum((0.04 if k == "industry" and profile.industry in {"Услуги", "B2B", "B2G"} else WEIGHTS[k]) * v for k, v in signals.items() if k in WEIGHTS and k != "relevance")
+                score = relevance[i] * (1.0 + bonus / WEIGHTS["relevance"])
+                if material.source_type == "glossary" and not any(word in query.casefold() for word in ("что такое", "термин", "определение")):
+                    score *= 0.75
             else:
                 score = relevance[i]
             candidates.append({"material": material, "signals": signals, "reasons": reasons, "score": score})
+        candidate_count = len(candidates)
         selected = []
         while candidates and len(selected) < limit:
 
@@ -281,6 +344,8 @@ class Engine:
             chosen["diversity_penalty"] = chosen["score"] - chosen["rank_score"]
             candidates.remove(chosen)
             selected.append(chosen)
+        if not baseline and semantic_scores is not None and not inferred_topics and selected and float(word_scores.max()) < SEMANTIC_CONFIG["unknown_word_floor"] and float(semantic_scores.max()) < SEMANTIC_CONFIG["unknown_floor"]:
+            selected = []
         items = []
         for chosen in selected:
             material = chosen["material"]
@@ -316,7 +381,7 @@ class Engine:
         clarification = None
         if not baseline:
             route_args["active_profile_fields"] = [
-                k for k in active if any(k in item.signals for item in items)
+                k for k in active if any(item.signals.get(k, 0) > 0 for item in items)
             ]
         if not items:
             clarification = (
@@ -324,6 +389,9 @@ class Engine:
             )
         elif max(i.signals["relevance"] for i in items) < 0.20:
             notice = "Совпадение слабое: это ближайшие материалы, а не точный ответ. Уточните задачу для более полезной подборки."
+        if not baseline and items and requested_sectors and not any(requested_sectors & sectors_for(item.material.title) for item in items):
+            sector_notice = "В этой подборке нет подтверждённого отраслевого совпадения: это общие материалы по бизнес-задаче. Уточните, что хотите изучить."
+            notice = (notice + " " if notice else "") + sector_notice
         return Route(
             **route_args,
             items=items,
@@ -331,5 +399,5 @@ class Engine:
             clarification=clarification,
             elapsed_ms=round((time.perf_counter() - start) * 1000, 2),
             excluded_count=excluded,
-            candidate_count=len(candidates) + len(selected),
+            candidate_count=candidate_count,
         )

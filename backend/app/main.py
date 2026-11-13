@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from .catalog import load_catalog
 from .engine import Engine
 from .llm import interpret
-from .models import FeedbackRequest, HistoryImportRequest, RecommendationRequest
+from .models import FeedbackRequest, HistoryImportRequest, Profile, RecommendationRequest
 from .semantic import optional_encoder
 from .storage import Learner, Signal, make_engine, signals
 
@@ -146,7 +146,7 @@ def bootstrap(
     user: Learner = Depends(learner), db: Session = Depends(database), engine: Engine = Depends(recommender)
 ):
     return {
-        "profile": user.profile,
+        "profile": Profile.model_validate(user.profile).model_dump(),
         "query": user.last_query,
         "signals": {mid: value for mid, value in signals(db, user.id).items() if mid in engine.by_id},
         "catalog_mode": engine.mode,
@@ -263,7 +263,7 @@ def progress(
             for mid, signal in history.items()
             if mid in engine.by_id
         ],
-        "profile": user.profile,
+        "profile": Profile.model_validate(user.profile).model_dump(),
     }
 
 

@@ -56,6 +56,7 @@ export default function Home() {
   const [draggingHistory,setDraggingHistory] = useState(false);
   const [personaId,setPersonaId] = useState('');
   const [intent,setIntent] = useState<{goal:string;clarification:string|null}|null>(null);
+  const [intentAnswer,setIntentAnswer] = useState('');
   const [aiBusy,setAiBusy] = useState(false);
   const [aiEnabled,setAiEnabled] = useState(false);
   const [aiExternal,setAiExternal] = useState(false);
@@ -65,6 +66,8 @@ export default function Home() {
   const [toast,setToast] = useState({message:'', visible:false});
   const [info,setInfo] = useState<{catalog_mode:string;catalog_count:number;semantic_model:string|null;industries:string[]}>({catalog_mode:'demo',catalog_count:0,semantic_model:null,industries:[]});
   const [evaluation,setEvaluation] = useState<Evaluation>({status:'',note:''});
+  const queryRef = useRef(query);
+  const aiRequest = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const dialogTitle = useRef<HTMLHeadingElement>(null);
@@ -80,10 +83,16 @@ export default function Home() {
   const menuHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const learnCount = Object.values(history).filter(v=>v==='completed'||v==='known').length;
 
-  useEffect(()=>{let active=true; Promise.all([
-    api<{profile:Profile;query:string;signals:Record<string,string>;catalog_mode:string;catalog_count:number;semantic_model:string|null;industries:string[]}>('/bootstrap'),
-    api<Persona[]>('/demo/profiles'), api<Evaluation>('/evaluation/results')
-  ]).then(([data,people,e])=>{if(!active)return;setProfile(data.profile);setQuery(data.query);setHistory(data.signals);setInfo(data);setAiEnabled(Boolean((data as typeof data & {llm_enabled?:boolean}).llm_enabled));setAiExternal(Boolean((data as typeof data & {llm_external?:boolean}).llm_external));setPersonas(people);setEvaluation(e);setReady(true);}).catch(()=>{if(active)setError('Не удалось подключиться к приложению. Обновите страницу после запуска сервера.');}); return()=>{active=false;};},[]);
+  useEffect(()=>{
+    let active=true;
+    api<{profile:Profile;query:string;signals:Record<string,string>;catalog_mode:string;catalog_count:number;semantic_model:string|null;industries:string[];llm_enabled?:boolean;llm_external?:boolean}>('/bootstrap')
+      .then(data=>{if(!active)return;setProfile(data.profile);updateQuery(data.query);setHistory(data.signals);setInfo(data);setAiEnabled(Boolean(data.llm_enabled));setAiExternal(Boolean(data.llm_external));setReady(true);})
+      .catch(()=>{if(active)setError('Не удалось подключиться к приложению. Обновите страницу после запуска сервера.');});
+    api<Persona[]>('/demo/profiles').then(people=>{if(active)setPersonas(people);}).catch(()=>{});
+    api<Evaluation>('/evaluation/results').then(result=>{if(active)setEvaluation(result);})
+      .catch(()=>{if(active)setEvaluation({status:'unavailable',note:'Оценка временно недоступна. Подбор материалов продолжает работать.'});});
+    return()=>{active=false;};
+  },[]);
 
   useEffect(()=>{
     if (selected) {
@@ -178,16 +187,22 @@ export default function Home() {
     catalogTop.current?.scrollIntoView({block:'start'});
   }
 
-  function patchProfile(key:keyof Profile,value:string){if(busy)return;setProfile(p=>({...p,[key]:value||null}));setComparison(null);}
+  function updateQuery(value:string){queryRef.current=value;setQuery(value);setIntent(null);setIntentAnswer('');}
+  function patchProfile(key:keyof Profile,value:string){if(busy||!ready)return;setProfile(p=>({...p,[key]:value||null}));setComparison(null);}
   async function recommend(override?:string){
-    const value=override??query;if(override!==undefined)setQuery(override);setBusy(true);setError('');
+    const value=override??query;if(override!==undefined)updateQuery(override);setBusy(true);setError('');
     try{setRoute(await api('/recommendations',{query:value,profile}));setTab('route');}catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
   async function clarifyTask(){
-    setAiBusy(true);setError('');setIntent(null);
-    try{const result=await api<{status:string;intent:{goal:string;clarification:string|null}|null}>('/intent',{query});
-      if(result.intent)setIntent(result.intent);else setError('AI-помощник сейчас недоступен. Можно построить маршрут по исходной задаче.');
-    }catch{setError('AI-помощник не ответил. Можно построить маршрут обычным способом.');}finally{setAiBusy(false);}
+    const input=query;
+    const request=++aiRequest.current;
+    setAiBusy(true);setError('');setIntent(null);setIntentAnswer('');
+    try{const result=await api<{status:string;intent:{goal:string;clarification:string|null}|null}>('/intent',{query:input});
+      if(request!==aiRequest.current||queryRef.current!==input)return;
+      if(result.intent)setIntent(result.intent);
+      else if(result.status==='unchanged')setError('AI не нашёл более точной формулировки. Укажите, что хотите понять или решить; маршрут можно построить по вашему тексту.');
+      else setError('AI-помощник сейчас недоступен. Можно построить маршрут по исходной задаче.');
+    }catch{if(request===aiRequest.current&&queryRef.current===input)setError('AI-помощник не ответил. Можно построить маршрут обычным способом.');}finally{if(request===aiRequest.current)setAiBusy(false);}
   }
   function dropHistory(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
@@ -212,7 +227,7 @@ export default function Home() {
     setToast({message:signal==='reset'?'Отметка удалена':'Отметка сохранена',visible:true});setComparison(null);
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   async function openMaterial(material:Material){setError('');setToast(current=>({...current,visible:false}));try{setSelected(await api<Material>('/catalog/'+encodeURIComponent(material.id)));}catch(e){setError((e as Error).message);}}
-  function choosePersona(id:string){const p=personas.find(p=>p.id===id);if(p){setPersonaId(id);setQuery(p.query);setProfile(p.profile);setComparison(null);}}
+  function choosePersona(id:string){const p=personas.find(p=>p.id===id);if(p){setPersonaId(id);updateQuery(p.query);setProfile(p.profile);setComparison(null);}}
 
   function materialTags(m:Material){return <div className="material-tags"><span className={'format '+m.source_type}>{m.source_type==='document'?<FileText size={13}/>:<BookOpen size={13}/>} {formats[m.source_type]}</span><span className={m.access==='free'?'free':''}>{access[m.access]}</span>{m.duration&&<span>{m.duration}</span>}</div>;}
   function feedbackNotice() {
@@ -247,11 +262,11 @@ export default function Home() {
     </div></article>;}
 
   const profileForm=<div className="profile-fields" id="profile-fields">
-    <ChoiceField label="Этап бизнеса" value={profile.stage??''} options={profileChoices.stage} emptyLabel="Можно пропустить" clearable disabled={busy} onChange={value=>patchProfile('stage', value)}/>
-    <ChoiceField label="Сфера" value={profile.industry??''} options={(info.industries.length ? info.industries : ['HoReCa', 'Торговля', 'Услуги', 'IT']).map(value=>({value, label:value}))} emptyLabel="Не указана" clearable disabled={busy} onChange={value=>patchProfile('industry', value)}/>
-    <ChoiceField label="Опыт" value={profile.experience??''} options={profileChoices.experience} emptyLabel="Можно пропустить" clearable disabled={busy} onChange={value=>patchProfile('experience', value)}/>
-    <ChoiceField label="Удобный формат" value={profile.format??''} options={profileChoices.format} emptyLabel="Любой формат" clearable disabled={busy} onChange={value=>patchProfile('format', value)}/>
-    <button className="text-button muted" onClick={()=>{setProfile({});setComparison(null);}}>Сбросить профиль</button>
+    <ChoiceField label="Этап бизнеса" value={profile.stage??''} options={profileChoices.stage} emptyLabel="Можно пропустить" clearable disabled={busy||!ready} onChange={value=>patchProfile('stage', value)}/>
+    <ChoiceField label="Сфера" value={profile.industry??''} options={(info.industries.length ? info.industries : ['HoReCa', 'Торговля', 'Услуги', 'IT']).map(value=>({value, label:value}))} emptyLabel="Не указана" clearable disabled={busy||!ready} onChange={value=>patchProfile('industry', value)}/>
+    <ChoiceField label="Опыт" value={profile.experience??''} options={profileChoices.experience} emptyLabel="Можно пропустить" clearable disabled={busy||!ready} onChange={value=>patchProfile('experience', value)}/>
+    <ChoiceField label="Удобный формат" value={profile.format??''} options={profileChoices.format} emptyLabel="Любой формат" clearable disabled={busy||!ready} onChange={value=>patchProfile('format', value)}/>
+    <button className="text-button muted" disabled={busy||!ready} onClick={()=>{setProfile({});setComparison(null);}}>Сбросить профиль</button>
   </div>;
 
   return <div className="app-shell">
@@ -312,13 +327,13 @@ export default function Home() {
               <div className="task-field">
                 <label htmlFor="business-task">Ваша бизнес-задача</label>
                 <span className="char-count" aria-hidden="true">{query.length}/1500</span>
-                <textarea disabled={busy||!ready} ref={textarea} id="business-task" placeholder="Например, как привлечь больше клиентов в кофейню?" maxLength={1500} value={query} onChange={e=>{setQuery(e.target.value);setIntent(null);setComparison(null);}}/>
+                <textarea disabled={busy||!ready} ref={textarea} id="business-task" placeholder="Например, как привлечь больше клиентов в кофейню?" maxLength={1500} value={query} onChange={e=>{updateQuery(e.target.value);setIntent(null);setComparison(null);}}/>
               </div>
               <div className="task-controls"><div className="pace-options" aria-label="Темп обучения"><button type="button" disabled={busy} aria-pressed={profile.urgency==='quick'} className={profile.urgency==='quick'?'active':''} onClick={()=>patchProfile('urgency',profile.urgency==='quick'?'':'quick')}>Быстро применить</button><button type="button" disabled={busy} aria-pressed={profile.urgency==='deep'} className={profile.urgency==='deep'?'active':''} onClick={()=>patchProfile('urgency',profile.urgency==='deep'?'':'deep')}>Разобраться глубже</button></div></div>
               <div className="task-submit"><button className="primary" type="submit" disabled={busy||!ready}>{busy?<LoaderCircle className="spinning" size={17}/>:<ArrowRight size={17}/>} {tab==='jury'?'Сравнить алгоритмы':'Построить маршрут'}</button></div>
             </form>
             {aiEnabled&&<div className="honesty-note"><Sparkles size={17}/><div><button className="text-button" type="button" disabled={busy||aiBusy||!query.trim()} onClick={clarifyTask}>{aiBusy?'AI уточняет задачу…':'Уточнить задачу с AI'}</button><p>{aiExternal?'Текст задачи будет передан настроенному AI-сервису. Уберите имена, контакты и другие личные сведения.':'Текст задачи обрабатывается локальным AI-помощником.'} Проверьте предложенную формулировку перед применением.</p></div></div>}
-            {intent&&<div className="empty-state"><h3>Предложение AI</h3><p>{intent.goal}</p>{intent.clarification&&<p>{intent.clarification}</p>}<button className="secondary" disabled={busy} onClick={()=>{setQuery(intent.goal);setIntent(null);setComparison(null);textarea.current?.focus();}}>Применить формулировку</button><button className="text-button" onClick={()=>setIntent(null)}>Оставить мою задачу</button></div>}
+            {intent&&<div className="empty-state"><h3>Предложение AI</h3><p>{intent.goal}</p>{intent.clarification&&<label className="intent-answer">{intent.clarification}<input aria-label="Ответ на уточнение AI" value={intentAnswer} maxLength={300} placeholder="Уточните здесь или оставьте поле пустым" onChange={e=>setIntentAnswer(e.target.value)}/></label>}<button className="secondary" disabled={busy} onClick={()=>{setComparison(null);void recommend(intent.goal+(intentAnswer.trim()?'. '+intentAnswer.trim():''));}}>Применить и построить маршрут</button><button className="text-button" onClick={()=>setIntent(null)}>Оставить мою задачу</button></div>}
           </section>
           <aside className={profileOpen ? 'context-card expanded' : 'context-card'}>
             <div className="context-heading"><h2>Ваш контекст</h2><p>Необязательно</p></div>

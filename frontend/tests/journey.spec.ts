@@ -73,7 +73,7 @@ test('AI suggestion requires explicit acceptance and failure keeps original task
   await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
   await expect(page.getByText('Предложение AI',{exact:true})).toBeVisible();
   await expect(task).toHaveValue('Хочу больше клиентов');
-  await page.getByRole('button',{name:'Применить формулировку',exact:true}).click();
+  await page.getByRole('button',{name:'Применить и построить маршрут',exact:true}).click();
   await expect(task).toHaveValue('Как привлечь клиентов в кофейню');
   await page.route('**/api/intent',route=>route.fulfill({json:{status:'unavailable',intent:null}}));
   await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
@@ -161,4 +161,61 @@ test('catalog pages and material details keep pointer focus visually quiet',asyn
   await expect(dialog).toBeHidden();
   await expect(card).toHaveCSS('outline-style','none');
   await expect(card.locator('.catalog-open')).toBeFocused();
+});
+
+
+test('late AI response cannot overwrite a changed task',async({page})=>{
+  await page.route('**/api/bootstrap',async route=>{
+    const response=await route.fetch();await route.fulfill({json:{...await response.json(),llm_enabled:true}});
+  });
+  let pending:import('@playwright/test').Route|undefined;
+  await page.route('**/api/intent',route=>{pending=route;});
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
+  const task=page.getByLabel('Ваша бизнес-задача');
+  await task.fill('Нужна реклама кофейни');
+  await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
+  await expect.poll(()=>Boolean(pending)).toBeTruthy();
+  await task.fill('Нужен договор с подрядчиком');
+  await pending!.fulfill({json:{status:'ready',intent:{goal:'Старая формулировка рекламы',clarification:null}}});
+  await expect(page.getByRole('button',{name:'Уточнить задачу с AI',exact:true})).toBeEnabled();
+  await expect(page.getByText('Старая формулировка рекламы',{exact:true})).toHaveCount(0);
+  await expect(task).toHaveValue('Нужен договор с подрядчиком');
+});
+
+test('hanging optional evaluation does not disable the primary route',async({page})=>{
+  await page.route('**/api/evaluation/results',()=>{});
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:/Привлечь клиентов/}).click();
+  await expect(page.locator('.route-card').first()).toBeVisible();
+});
+
+
+test('AI clarification answer builds a route instead of only replacing input',async({page})=>{
+  await page.route('**/api/bootstrap',async route=>{
+    const response=await route.fetch();await route.fulfill({json:{...await response.json(),llm_enabled:true}});
+  });
+  await page.route('**/api/intent',route=>route.fulfill({json:{status:'ready',intent:{goal:'Как привлечь клиентов в кофейню',clarification:'Кофейня уже работает?'}}}));
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
+  await page.getByLabel('Ваша бизнес-задача').fill('Мало клиентов');
+  await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
+  await page.getByLabel('Ответ на уточнение AI').fill('Кофейня работает три месяца');
+  await page.getByRole('button',{name:'Применить и построить маршрут',exact:true}).click();
+  await expect(page.locator('.route-card').first()).toBeVisible();
+  await expect(page.locator('.route-context')).toContainText('Кофейня работает три месяца');
+});
+
+test('unchanged AI answer is reported honestly',async({page})=>{
+  await page.route('**/api/bootstrap',async route=>{
+    const response=await route.fetch();await route.fulfill({json:{...await response.json(),llm_enabled:true}});
+  });
+  await page.route('**/api/intent',route=>route.fulfill({json:{status:'unchanged',intent:null}}));
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
+  await page.getByLabel('Ваша бизнес-задача').fill('Франшиза');
+  await page.getByRole('button',{name:'Уточнить задачу с AI',exact:true}).click();
+  await expect(page.locator('.error-banner')).toContainText('не нашёл более точной формулировки');
+  await expect(page.getByText('Предложение AI',{exact:true})).toHaveCount(0);
 });

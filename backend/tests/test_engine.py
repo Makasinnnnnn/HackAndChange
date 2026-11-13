@@ -108,3 +108,40 @@ def test_catalog_dedup_and_publication_filter(tmp_path):
     )
     materials, _, _ = load_catalog(path)
     assert [m.id for m in materials] == ["a"]
+
+
+@pytest.mark.parametrize("query", ["франшиза", "кофе"])
+def test_single_informative_word_is_searched(query):
+    material = Material(id="short", source_type="course", title="Франшиза кофейни", description="Как выбрать франшизу и открыть кофейню")
+    assert Engine([material]).recommend(query).items
+
+
+def test_real_source_topic_aliases_and_bounded_personalization():
+    relevant = Material(id="relevant", source_type="course", title="Как управлять командой", topics=["Управление командой"], industries=["HoReСa"], difficulty="beginner")
+    generic = Material(id="generic", source_type="article", title="Новости бизнеса")
+    engine = Engine([relevant, generic])
+    route = engine.recommend("делегирование сотрудникам", Profile(industry="HoReCa", experience="beginner"))
+    assert route.items[0].material.id == "relevant"
+    assert route.items[0].signals["industry"] == 1
+    assert route.items[0].signals["experience"] == 1
+
+
+def test_opening_intent_does_not_recommend_closure():
+    materials = [Material(id="start", source_type="course", title="Открытие бизнеса: бизнес-план", topics=["Первые шаги"]), Material(id="close", source_type="article", title="Как закрыть ИП", topics=["Первые шаги"])]
+    route = Engine(materials).recommend("Хочу открыть бизнес с нуля")
+    assert route.items and all(i.material.id != "close" for i in route.items)
+
+
+def test_explicit_sector_mismatch_is_not_rescued_by_broad_service_profile():
+    materials = [Material(id="plan", source_type="course", title="Как открыть бизнес: бизнес-план", topics=["Первые шаги"]), Material(id="beauty", source_type="article", title="Как открыть маникюрную студию", topics=["Первые шаги"], industries=["Услуги"])]
+    route = Engine(materials).recommend("Открыть медицинскую лабораторию", Profile(industry="Услуги"))
+    assert route.items and all(i.material.id != "beauty" for i in route.items)
+    assert "общие материалы" in route.notice
+
+
+def test_unmatched_profile_field_does_not_claim_to_affect_additive_ranking():
+    material = Material(id="cafe", source_type="course", title="Как привлечь клиентов", topics=["Маркетинг"], industries=["HoReCa"])
+    route = Engine([material]).recommend("Как привлечь клиентов", Profile(industry="Услуги"))
+    assert route.items
+    assert "industry" not in route.active_profile_fields
+    assert not any("отраслевая" in reason for reason in route.items[0].reasons)

@@ -40,6 +40,8 @@ def test_validated_response_and_fallback(monkeypatch):
     monkeypatch.setattr("app.llm.build_opener", lambda *args: Opener())
     response.answer = '{"goal":"Увеличить продажи","clarification":null}'
     assert interpret("Продажи")[0].goal == "Увеличить продажи"
+    response.answer = '{"goal":"Продажи!","clarification":null}'
+    assert interpret("Продажи") == (None, "unchanged")
     response.answer = '{"goal":"Продажи","invented_course":"123"}'
     assert interpret("Продажи") == (None, "unavailable")
 

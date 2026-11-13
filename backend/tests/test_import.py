@@ -41,3 +41,9 @@ def test_article_access_uses_type_not_editor_flag():
     assert importer.price_and_access("article", {"IsPublic": True}, {"Закрытый"}) == (None, "unknown")
     assert importer.price_and_access("article", {"IsPublic": True}, set()) == (None, "unknown")
     assert importer.price_and_access("article", {"IsPublic": True}, {"Платный"}) == (None, "paid")
+
+
+def test_source_audience_labels_are_not_industries():
+    assert importer.normalize_audience(["Без опыта", "Услуги", "💥 NEW"]) == (["Услуги"], "beginner")
+    assert importer.normalize_audience(["С опытом", "Без опыта"]) == ([], None)
+    assert importer.normalize_audience(["HoReСa", "HoReCa"]) == (["HoReCa"], None)

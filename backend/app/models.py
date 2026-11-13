@@ -16,6 +16,14 @@ class Profile(BaseModel):
     urgency: Literal["quick", "deep"] | None = None
 
 
+    @field_validator("industry")
+    @classmethod
+    def normalize_industry(cls, value):
+        if value and value.casefold().translate(str.maketrans({"с": "c", "а": "a", "е": "e", "о": "o"})) == "horeca":
+            return "HoReCa"
+        return value
+
+
 class Material(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str
