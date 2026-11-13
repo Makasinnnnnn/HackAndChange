@@ -79,3 +79,17 @@ test('AI suggestion requires explicit acceptance and failure keeps original task
   await expect(page.locator('.route-card').first()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
 });
+
+
+test('history file imports completed courses and persists after reload',async({page})=>{
+  const catalog=await (await page.request.get('/api/catalog?limit=100')).json();
+  const ready=await (await page.request.get('/api/ready')).json();
+  const course=catalog.items.find((m:{source_type:string})=>m.source_type==='course');
+  await nav(page,'Мой прогресс');
+  await page.locator('input[type=file]').setInputFiles({name:'history.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({catalog_version:ready.catalog_version,completed_material_ids:[course.id]}))});
+  await expect(page.locator('.progress-list')).toContainText(course.title);
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
+  await nav(page,'Мой прогресс');
+  await expect(page.locator('.progress-list')).toContainText(course.title);
+});

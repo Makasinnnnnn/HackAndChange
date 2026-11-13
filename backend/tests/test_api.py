@@ -124,3 +124,26 @@ def test_llm_is_explicit_and_does_not_change_recommendations(client, monkeypatch
     assert result["intent"]["goal"] == "Продажи"
     assert calls == [payload["query"]]
     assert client.get("/api/bootstrap").json()["query"] == payload["query"]
+
+
+def test_history_import_is_atomic_versioned_and_session_scoped(client):
+    ready = client.get("/api/ready").json()
+    course = next(m for m in client.get("/api/catalog?limit=100").json()["items"] if m["source_type"] == "course")
+    payload = {"catalog_version": ready["catalog_version"], "completed_material_ids": [course["id"]]}
+    assert client.post("/api/history/import", json={**payload, "catalog_version": "0" * 16}).status_code == 409
+    assert client.post("/api/history/import", json={**payload, "completed_material_ids": [course["id"], "missing"]}).status_code == 422
+    assert client.get("/api/progress").json()["items"] == []
+    assert client.post("/api/history/import", json=payload).json()["imported"] == 1
+    assert client.post("/api/history/import", json=payload).json()["imported"] == 1
+    assert len(client.get("/api/progress").json()["items"]) == 1
+    assert client.get("/api/progress").json()["items"][0]["signal"] == "completed"
+    assert client.post("/api/history/import", json={**payload, "completed_material_ids": [course["id"], course["id"]]}).status_code == 422
+    other = TestClient(app)
+    try:
+        assert other.get("/api/progress").json()["items"] == []
+    finally:
+        other.close()
+
+
+def test_health_uses_application_version(client):
+    assert client.get("/api/health").json()["version"] == app.version

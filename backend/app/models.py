@@ -96,3 +96,16 @@ class Route(BaseModel):
     excluded_count: int
     candidate_count: int
     active_profile_fields: list[str]
+
+
+class HistoryImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    catalog_version: str = Field(pattern=r"^[0-9a-f]{16}$")
+    completed_material_ids: list[str] = Field(min_length=1, max_length=100)
+
+    @field_validator("completed_material_ids")
+    @classmethod
+    def unique_ids(cls, values):
+        if len(values) != len(set(values)) or any(len(v) > 100 for v in values):
+            raise ValueError("History IDs must be unique and bounded")
+        return values

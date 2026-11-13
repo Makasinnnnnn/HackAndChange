@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from .catalog import load_catalog
 from .engine import Engine
 from .llm import interpret
-from .models import FeedbackRequest, RecommendationRequest
+from .models import FeedbackRequest, HistoryImportRequest, RecommendationRequest
 from .semantic import optional_encoder
 from .storage import Learner, Signal, make_engine, signals
 
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Альфа-Маршрут",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
@@ -125,7 +125,7 @@ def recommender(request: Request) -> Engine:
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": app.version}
 
 
 @app.get("/api/ready")
@@ -229,6 +229,27 @@ def feedback(
         db.add(Signal(learner_id=user.id, material_id=body.material_id, value=body.signal))
     db.commit()
     return {"saved": True, "signals": signals(db, user.id)}
+
+
+@app.post("/api/history/import")
+def import_history(
+    body: HistoryImportRequest,
+    user: Learner = Depends(learner),
+    db: Session = Depends(database),
+    engine: Engine = Depends(recommender),
+):
+    if body.catalog_version != engine.version:
+        raise HTTPException(409, "История подготовлена для другой версии каталога")
+    if any(mid not in engine.by_id or engine.by_id[mid].source_type != "course" for mid in body.completed_material_ids):
+        raise HTTPException(422, "История содержит неизвестные материалы или не курсы")
+    for mid in body.completed_material_ids:
+        record = db.scalar(select(Signal).where(Signal.learner_id == user.id, Signal.material_id == mid))
+        if record:
+            record.value = "completed"
+        else:
+            db.add(Signal(learner_id=user.id, material_id=mid, value="completed"))
+    db.commit()
+    return {"imported": len(body.completed_material_ids), "signals": signals(db, user.id)}
 
 
 @app.get("/api/progress")

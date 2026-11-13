@@ -12,9 +12,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Validate release version
+        run: |
+          python -c "import json, os; v=json.load(open('frontend/package.json'))['version']; assert os.environ['GITHUB_REF_NAME']=='v'+v"
+          echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - run: python scripts/check_public_files.py
-      - run: python scripts/package_release.py --output "${{ runner.temp }}/alfa-route-1.0.0.zip"
+      - run: python scripts/package_release.py --output "${{ runner.temp }}/alfa-route-${{ env.RELEASE_VERSION }}.zip"
       - name: Publish version and public archive
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" "${{ runner.temp }}/alfa-route-1.0.0.zip" "${{ runner.temp }}/alfa-route-1.0.0.zip.sha256" --verify-tag --title "Альфа-Маршрут 1.0.0" --notes-file docs/release-1.0.md
+        run: gh release create "$GITHUB_REF_NAME" "${{ runner.temp }}/alfa-route-${{ env.RELEASE_VERSION }}.zip" "${{ runner.temp }}/alfa-route-${{ env.RELEASE_VERSION }}.zip.sha256" --verify-tag --title "Альфа-Маршрут ${{ env.RELEASE_VERSION }}" --notes-file docs/release-${{ env.RELEASE_VERSION }}.md

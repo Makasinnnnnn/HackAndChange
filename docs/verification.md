@@ -42,3 +42,9 @@ Run 43232880960 реально прошёл Python-проверки, typecheck/b
 44 pytest с TEST_SEMANTIC_MODEL_DIR и настоящими локальными весами E5 прошли. 8 E2E desktop/mobile прошли, включая неизменность исходной задачи до принятия AI-формулировки и обычный маршрут после ошибки AI. Typecheck/build и ruff успешны. FULL+E5 smoke после переимпорта: 8 проверок, 1473 материала, версия 95737bdb2ad24f2d. GitHub runs 43234480543, 43236089871, 43238234280 завершились SUCCESS, включая браузерные сценарии.
 
 check_links.py: 966 уникальных URL, 3 попытки с TLS certificate verification failure, затем остановка; 963 не проверены. Отключение TLS не использовалось. Нельзя объявлять ссылки ни исправными, ни мёртвыми по этому результату.
+
+## Завершение версии 1.1
+
+Чистый ZIP 1.0 реально собран и запущен на Windows в .private/release-validation-1-0, отдельный проект hac-release-verify, порт 3081 и новый том: 8 smoke passed, feedback записан/прочитан. Новая production-сборка 1.1 также реально прошла, 47 pytest с E5, 10 E2E desktop/mobile и ruff/typecheck. FULL+E5+Qwen smoke 8 passed. Replay исходной обезличенной истории: 18 курсов приняты API и прочитаны через progress, все исключены из следующих рекомендаций.
+
+PDF/PPTX 1.1: 9 слайдов, все рендеры просмотрены, package/layout/font/import без findings. Первый слайд содержит ссылку на GitHub. Не утверждается ручной просмотр в PowerPoint или выступление человека.

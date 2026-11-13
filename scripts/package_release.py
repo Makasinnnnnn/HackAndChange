@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output", type=Path, default=ROOT.parent / "output/hackandchange/alfa-route-mvp-1.0.0.zip"
+        "--output", type=Path, default=ROOT.parent / "output/hackandchange/alfa-route-1.1.0.zip"
     )
     args = parser.parse_args()
     target = args.output.resolve()
@@ -35,7 +35,7 @@ if __name__ == "__main__":
             ):
                 raise SystemExit("Unexpected private file in archive: " + name)
         assert "README.md" in names and "compose.yaml" in names
-        assert "output/presentation/alfa-route-rehearsal-v2.pdf" in names
+        assert "output/presentation/alfa-route-1.1.pdf" in names
         demo = json.loads(archive.read("backend/data/demo.json"))
         assert all(item["provenance"] == "synthetic" for item in demo)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()

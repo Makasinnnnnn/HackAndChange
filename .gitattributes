@@ -3,3 +3,7 @@
 *.png -text
 *.pdf -text
 *.pptx -text
+
+# Keep historical rehearsals in Git, omit them from the current release archive.
+output/presentation/alfa-route-rehearsal-v2.pdf export-ignore
+output/presentation/alfa-route-rehearsal-v2.pptx export-ignore

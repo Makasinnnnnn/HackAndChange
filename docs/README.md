@@ -6,7 +6,9 @@
 - [Архитектура](architecture.md), [решения](decisions.md), [алгоритм](recommender-design.md)
 - [Аудит данных](data-audit.md), [оценка](evaluation.md), [бизнес-метрики](product-metrics.md)
 - [Генеративный AI](llm.md), [запуск Docker](deployment.md), [проверки](verification.md)
-- [Версия 1.0](release-1.0.md), [ограничения](limitations.md)
+- [Версия 1.1](release-1.1.0.md), [ограничения](limitations.md)
 - [Сценарий показа](demo-script.md), [вопросы жюри](jury-qa.md), [комплект сдачи](submission.md)
 
 Исторические записи сохраняют результаты на момент проверки. Текущие границы версии указаны в STATUS и release-1.0.
+
+[Импорт истории](history.md) · [Выступление и резервный показ](pitch.md)

@@ -1,4 +1,4 @@
-"""Extract only canonical links from published free article blocks, entirely locally.
+"""Extract only canonical links from published free article and catalog-verified free document blocks, entirely locally.
 
 Does not output or save article bodies and never touches paid lessons or user tables.
 """
@@ -8,6 +8,7 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlparse
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 container = "hac-audit-20261112"
@@ -20,12 +21,25 @@ labels = json.loads(
 )
 if labels.get("project") != "hackandchange" or labels.get("purpose") != "private-data-audit":
     raise SystemExit("Dedicated audit container required")
+catalog_path = ROOT / ".private/catalog.json"
+free_documents = []
+if catalog_path.is_file():
+    for item in json.loads(catalog_path.read_text(encoding="utf-8")):
+        if item["source_type"] == "document" and item["access"] == "free":
+            free_documents.append(str(UUID(item["id"].split(":", 1)[1])))
+document_ids = ",".join("'" + value + "'" for value in free_documents)
+document_union = (
+    ' UNION ALL SELECT e."HtmlContent" FROM "DocumentEmbedItems" e WHERE e."DocumentId" IN (' + document_ids + ')'
+    if document_ids else ""
+)
 sql = """BEGIN READ ONLY; SET LOCAL statement_timeout='30s';
-SELECT coalesce(json_agg(DISTINCT u.match[1]),'[]')
-FROM "ArticleEmbedItems" e JOIN "Articles" a ON a."Id"=e."ArticleId"
-JOIN "Statuses" s ON s."Id"=a."StatusId",
-LATERAL regexp_matches(e."HtmlContent",'https?://kurs[.]alfabank[.]ru/[A-Za-z0-9_/-]+','g') u(match)
-WHERE a."IsPublic" AND NOT a."IsClosed" AND NOT a."IsDeleted" AND s."Title"='Опубликовано'; COMMIT;"""
+SELECT coalesce(json_agg(DISTINCT u.match[1]),'[]') FROM (
+SELECT e."HtmlContent" FROM "ArticleEmbedItems" e JOIN "Articles" a ON a."Id"=e."ArticleId"
+JOIN "Statuses" s ON s."Id"=a."StatusId"
+WHERE a."IsPublic" AND NOT a."IsClosed" AND NOT a."IsDeleted" AND s."Title"='Опубликовано'
+""" + document_union + """ ) blocks,
+LATERAL regexp_matches(blocks."HtmlContent",'https?://kurs[.]alfabank[.]ru/[A-Za-z0-9_/-]+','g') u(match);
+COMMIT;"""
 result = subprocess.run(
     [
         "docker",
