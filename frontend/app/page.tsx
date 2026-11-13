@@ -18,6 +18,10 @@ type Route = {match_scope?:'task'|'general';route_id:string; query:string; profi
 type Evaluation = {status:string;note:string;metrics?:Record<string,Record<string,Record<string,number>>>|null;judged_profiles?:number};
 type Persona = {id:string; name:string; situation:string; query:string; profile:Profile};
 const catalogPageSize = 12;
+function counted(count:number,forms:[string,string,string]) {
+  const last=count%10, hundred=count%100;
+  return `${count} ${forms[hundred>=11&&hundred<=14?2:last===1?0:last>=2&&last<=4?1:2]}`;
+}
 const formats:Record<string,string> = {article:'Статья',course:'Курс',document:'Шаблон',webinar:'Вебинар',podcast:'Подкаст',glossary:'Термин',calculator:'Калькулятор'};
 const profileChoices = {
   stage: [{value: 'idea', label: 'Есть идея'}, {value: 'start', label: 'Недавно запустился'}, {value: 'growth', label: 'Развиваю бизнес'}],
@@ -346,7 +350,7 @@ export default function Home() {
 
         {tab==='route'&&!route&&<section className="starting-points"><div className="section-label"><h2>Можно начать с этого</h2></div><div className="example-grid">{examples.map(e=><button className="example-card" key={e.title} disabled={busy||!ready} onClick={()=>recommend(e.query)}><span><strong>{e.title}</strong><small>{e.topic}</small></span><Image className="example-art" src={e.art} alt="" width={128} height={128} unoptimized/><ArrowUpRight size={18} aria-hidden="true"/></button>)}</div></section>}
         {tab==='route'&&route&&<section className="route-results" aria-live="polite"><div className="route-intro">
-          <div className="section-label"><h2>{route.match_scope==='general'?'Общие материалы по задаче':'Ваш маршрут'}{route.items.length>0&&<span className="count-badge">{route.items.length} {route.match_scope==='general'?'материалов':'шагов'}</span>}</h2><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
+          <div className="section-label"><h2>{route.match_scope==='general'?'Общие материалы по задаче':'Ваш маршрут'}{route.items.length>0&&<span className="count-badge">{counted(route.items.length,route.match_scope==='general'?['материал','материала','материалов']:['шаг','шага','шагов'])}</span>}</h2><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
           {route.query&&<p className="route-context"><strong>Ваша задача</strong><br/>{route.query}</p>}
           {route.active_profile_fields.length>0&&<p className="small-note">Учитываем только заполненный контекст. Материалы без известных признаков уровня и стадии не получают таких объяснений.</p>}
           </div>{route.clarification&&<div className="empty-state"><CircleHelp size={28}/><h3>Давайте найдём точку старта</h3><p>{route.clarification}</p><div className="empty-actions">{examples.map(e=><button className="secondary" key={e.title} disabled={busy} onClick={()=>recommend(e.query)}>{e.title}</button>)}</div></div>}

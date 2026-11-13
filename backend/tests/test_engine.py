@@ -19,7 +19,8 @@ def test_new_user_gets_explainable_route_without_onboarding(engine):
     route = engine.recommend(QUERY)
     assert route.items and not route.active_profile_fields
     assert all(i.reasons and i.next_action for i in route.items)
-    assert all(set(i.signals) == {"relevance", "diversity_penalty"} for i in route.items)
+    assert all({"relevance", "diversity_penalty"} <= set(i.signals) for i in route.items)
+    assert all(not (set(i.signals) & {"industry", "stage", "experience", "format", "urgency", "feedback"}) for i in route.items)
     assert len({i.material.id for i in route.items}) == len(route.items)
 
 
@@ -117,7 +118,7 @@ def test_single_informative_word_is_searched(query):
 
 
 def test_real_source_topic_aliases_and_bounded_personalization():
-    relevant = Material(id="relevant", source_type="course", title="Как управлять командой", topics=["Управление командой"], industries=["HoReСa"], difficulty="beginner")
+    relevant = Material(id="relevant", source_type="course", title="Как управлять командой", description="Делегирование задач и полномочий сотрудникам", topics=["Управление командой"], industries=["HoReСa"], difficulty="beginner")
     generic = Material(id="generic", source_type="article", title="Новости бизнеса")
     engine = Engine([relevant, generic])
     route = engine.recommend("делегирование сотрудникам", Profile(industry="HoReCa", experience="beginner"))

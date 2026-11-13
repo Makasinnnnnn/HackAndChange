@@ -5,10 +5,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .tasks import query_tasks, text_key
+
 TOPICS = {
     "Маркетинг": ("клиент", "продвиж", "маркет", "реклам", "кофейн", "посетител", "соцсет", "привлеч"),
     "Финансы": (
         "прибыл",
+        "рентабельност",
         "финанс",
         "кассов",
         "бюджет",
@@ -16,6 +19,7 @@ TOPICS = {
         "денеж",
         "расход",
         "выручк",
+        "доход",
         "цену",
         "ценообраз",
     ),
@@ -47,6 +51,30 @@ FORMAT_NAMES = {
     "calculator": "калькулятор",
 }
 STOP_WORDS = {
+    "какая",
+    "какой",
+    "какие",
+    "какую",
+    "почему",
+    "зачем",
+    "когда",
+    "где",
+    "ли",
+    "или",
+    "нужен",
+    "нужна",
+    "решить",
+    "делать",
+    "узнать",
+    "понять",
+    "можно",
+    "свой",
+    "своего",
+    "своем",
+    "своём",
+    "такое",
+    "кто",
+    "такой",
     "бизнес",
     "бизнесом",
     "помогите",
@@ -102,13 +130,21 @@ SECTOR_TERMS = {
     "marketplace": ("маркетплейс", "wildberries", "ozon"),
     "retail": ("магазин", "одежд", "розниц", "ретейл", "ритейл", "бутик"),
     "production": ("производств", "фабрик", "завод"),
-    "logistics": ("логист", "грузоперевоз", "транспортная компания"),
+    "logistics": ("логист", "перевозк", "перевозить", "перевозу", "грузоперевоз", "транспортная компания"),
+    "foreign_trade": ("импорт", "таможенн", "экспорт"),
+    "vending": ("вендинг", "торговых автомат"),
+    "social": ("социального бизнеса", "социальное предприниматель"),
 }
 
 
 def sectors_for(value):
     text = value.casefold()
-    return {sector for sector, terms in SECTOR_TERMS.items() if any(term in text for term in terms)}
+    if text.strip() == "кофе":
+        return {"food"}
+    found = {sector for sector, terms in SECTOR_TERMS.items() if any(term in text for term in terms)}
+    if re.search(r"салон\w*\s+красот", text):
+        found.add("beauty")
+    return found
 
 
 SECTOR_INDUSTRIES = {
@@ -120,6 +156,9 @@ SECTOR_INDUSTRIES = {
     "retail": {"Розница", "Оптовая торговля"},
     "production": {"Производство"},
     "logistics": {"Транспорт и логистика"},
+    "foreign_trade": {"ВЭД"},
+    "vending": {"Розница"},
+    "social": {"Услуги"},
 }
 BROAD_CHANNELS = {"B2B", "B2G", "ECom"}
 
@@ -189,7 +228,14 @@ PROFIT_MECHANISMS = {
     "conversion": ("конверси", "воронк", "средний чек", "среднего чека", "допродаж"),
     "margin": ("маржин", "рентабельност", "ценообразован", "наценк"),
     "costs": ("сократ", "снизи", "оптимизац", "себестоим", "издержк"),
-    "ad_efficiency": ("roas", "romi", "стоимость привлечения", "стоимости привлечения", "эффективность рекламы", "эффективности рекламы"),
+    "ad_efficiency": (
+        "roas",
+        "romi",
+        "стоимость привлечения",
+        "стоимости привлечения",
+        "эффективность рекламы",
+        "эффективности рекламы",
+    ),
     "organic": ("без рекламного бюджета", "бесплатное продвиж", "органическое продвиж", "сарафан"),
 }
 
@@ -213,6 +259,84 @@ class QueryIntent:
     opening: bool
     closing: bool
     constraints: frozenset[str] = frozenset()
+    tasks: frozenset[str] = frozenset()
+    requested_format: str | None = None
+    excluded_formats: frozenset[str] = frozenset()
+    entity: str | None = None
+    definition: bool = False
+    clarification: str | None = None
+    platforms: frozenset[str] = frozenset()
+    comparison_terms: tuple[str, ...] = ()
+
+
+PLATFORMS = {
+    "ozon": r"\bozon\b",
+    "wildberries": r"\bwildberries\b|\bwb\b|вайлдбер",
+    "yandex": r"яндекс",
+    "avito": r"авито",
+}
+TAX_SUBJECTS = {
+    "usn": r"\bусн\b",
+    "patent": r"патент",
+    "npd": r"самозанят|\bнпд\b",
+    "ip": r"\bип\b",
+    "ooo": r"\bооо\b",
+}
+
+
+def platforms_for(text):
+    return frozenset(key for key, pattern in PLATFORMS.items() if re.search(pattern, text_key(text)))
+
+
+def informative_words(text):
+    return {
+        word
+        for word in re.findall(r"[а-яa-z0-9]+", text_key(text))
+        if word not in STOP_WORDS and len(word) > 2
+    }
+
+
+def positive_request(query):
+    """Strip explicitly rejected alternatives, while retaining original text in Route."""
+    text = text_key(query)
+    corrections = {
+        "аткрыть": "открыть",
+        "кафейню": "кофейню",
+        "кафейня": "кофейня",
+        "скока": "сколько",
+        "панять": "понять",
+        "бизнасе": "бизнесе",
+        "прибыл": "прибыль",
+    }
+    text = re.sub(r"[а-я]+", lambda match: corrections.get(match.group(), match.group()), text)
+    constraints = set()
+    if re.search(r"(?:не хочу|не планирую|без)\s+(?:(?:покупать|покупки|выбора)\s+)?франшиз", text):
+        constraints.add("no_franchise")
+        text = re.sub(
+            r"(?:не хочу|не планирую|без)\s+(?:(?:покупать|покупки|выбора)\s+)?франшиз\w*", "", text
+        )
+    if re.search(r"без\s+(?:сотрудник|работник|персонал)", text):
+        constraints.add("no_employees")
+        text = re.sub(r"без\s+(?:сотрудник|работник|персонал)\w*", "", text)
+    if re.search(r"без\s+скид", text):
+        constraints.add("no_discounts")
+    if re.search(r"без\s+(?:найма|увеличения штата)", text):
+        constraints.add("no_hiring")
+        text = re.sub(r"без\s+(?:найма|увеличения штата)(?:\s+дополнительных)?(?:\s+сотрудников)?", "", text)
+    if re.search(r"сохранить\s+(?:сотрудник|команд|персонал)", text):
+        constraints.add("preserve_staff")
+    if re.search(r"перейти.{0,40}на усн", text):
+        constraints.add("target_usn")
+    # The alternative after 'а не' is not the requested task or format.
+    excluded_formats = set()
+    alternative = re.search(r"\bа не\b(.*)", text)
+    if alternative:
+        if "курс" in alternative.group(1):
+            excluded_formats.add("course")
+        text = text[: alternative.start()]
+    # A validation-before-investment request must not become a lease-contract search.
+    text = re.sub(r"\bдо\s+(?:аренды|покупки|найма)\b.*", "", text)
+    return text.strip(), constraints, frozenset(excluded_formats)
 
 
 def parse_intent(query: str, baseline=False) -> QueryIntent:
@@ -221,12 +345,53 @@ def parse_intent(query: str, baseline=False) -> QueryIntent:
     constrained_profit = bool(AD_SPEND_CONSTRAINT.search(lowered)) and any(
         term in lowered for term in ("прибыл", "рентабельност", "доход", "продаж", "выручк")
     )
-    positive_query = query
+    positive_query, constraints, excluded_formats = positive_request(query)
     if constrained_profit:
-        positive_query = AD_SPEND_CONSTRAINT.sub("", lowered).strip(" .?!")
+        positive_query = AD_SPEND_CONSTRAINT.sub("", positive_query).strip(" .?!")
         if not baseline:
             positive_query += " повторные продажи удержание клиентов маржинальность конверсия снижение затрат"
-    topics = frozenset(topics_for(query))
+        constraints.add("fixed_ad_spend")
+    tasks = query_tasks(positive_query if not constrained_profit else AD_SPEND_CONSTRAINT.sub("", lowered))
+    if "откры" in positive_query and sectors_for(positive_query) and "сколько денег" in positive_query:
+        tasks = tasks | {"business_plan"}
+    if re.search(
+        r"(?:рассчитать|посчитать|нет).{0,20}прибыл|прибыл.{0,20}(?:комисси|возврат)", positive_query
+    ) and sectors_for(positive_query) == {"marketplace"}:
+        tasks = frozenset({"profitability"})
+    if constrained_profit:
+        tasks = frozenset()  # Alternative profit mechanisms, not a conjunction of expansion terms.
+    if "no_hiring" in constraints and "прибыл" in positive_query:
+        tasks = frozenset({"profitability"})
+    if "marketplace" in sectors_for(positive_query) and re.search(
+        r"прибыл.{0,12}нет|нет.{0,12}прибыл", positive_query
+    ):
+        tasks = frozenset({"profitability"})
+    if positive_query.strip() in {"ип", "ооо"}:
+        tasks = frozenset({"registration"})
+    topics = frozenset(topics_for(positive_query))
+    definition = (
+        any(term in lowered for term in ("что такое", "определение", "термин"))
+        or len(re.findall(r"[а-яa-z]+", lowered)) <= 2
+    )
+    requested_format = (
+        "document"
+        if any(term in positive_query for term in ("шаблон", "образец"))
+        else "calculator"
+        if "калькулятор" in positive_query
+        else None
+    )
+    entity = (
+        "ип"
+        if re.search(r"\bип\b", positive_query) and not re.search(r"\bооо\b", positive_query)
+        else "ооо"
+        if re.search(r"\bооо\b", positive_query) and not re.search(r"\bип\b", positive_query)
+        else None
+    )
+    earning_only = (
+        bool(re.search(r"(?:заработать|зарабатывать).{0,15}(?:денег|деньги)", lowered))
+        and not tasks
+        and not sectors_for(query)
+    )
     meaningful = [
         word
         for word in re.findall(r"[а-яёa-z0-9]+", query.casefold())
@@ -236,11 +401,21 @@ def parse_intent(query: str, baseline=False) -> QueryIntent:
         query,
         positive_query if baseline else retrieval_query(positive_query),
         topics,
-        frozenset(sectors_for(query)),
-        not query or (not topics and not meaningful),
-        "Запуск бизнеса" in topics,
-        any(term in query.casefold() for term in ("закры", "ликвид", "прекрат")),
-        frozenset({"fixed_ad_spend"}) if constrained_profit else frozenset(),
+        frozenset(sectors_for(positive_query)),
+        not query or (not topics and not meaningful) or earning_only,
+        "Запуск бизнеса" in topics and "closing" not in tasks,
+        "closing" in tasks,
+        frozenset(constraints),
+        tasks,
+        requested_format,
+        excluded_formats,
+        entity,
+        definition,
+        "Какой договор нужен: поставки, услуг, аренды или трудовой?" if tasks == {"contract"} else None,
+        platforms_for(positive_query),
+        tuple(key for key, pattern in TAX_SUBJECTS.items() if re.search(pattern, positive_query))
+        if re.search(r"отлич|сравн|совмещ", positive_query)
+        else (),
     )
 
 

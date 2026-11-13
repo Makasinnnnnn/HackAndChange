@@ -1,9 +1,7 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
-*.png -text
-*.pdf -text
-*.pptx -text
-
-# Keep historical rehearsals in Git, omit them from the current release archive.
-output/presentation/alfa-route-rehearsal-v2.pdf export-ignore
-output/presentation/alfa-route-rehearsal-v2.pptx export-ignore
+*.png binary
+*.webp binary
+*.woff2 binary
+*.pdf binary
+*.pptx binary

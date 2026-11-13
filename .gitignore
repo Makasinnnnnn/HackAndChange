@@ -29,6 +29,8 @@ node_modules/
 .next/
 dist/
 coverage/
+.coverage
+htmlcov/
 test-results/
 playwright-report/
 .DS_Store

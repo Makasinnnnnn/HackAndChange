@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from .models import Profile, Route
 from .recommendation.eligibility import exclusion_reason
-from .recommendation.explanation import constraint_evidence, recommendation
+from .recommendation.explanation import constraint_evidence, recommendation, task_reasons
 from .recommendation.index import SearchIndex
 from .recommendation.intent import (
     material_topics,
@@ -24,9 +24,12 @@ from .recommendation.policy import (
     MIN_RELEVANCE,
     PERSONAL_VERSION,
     SEMANTIC_CONFIG,
+    TASK_DESCRIPTION_BONUS,
+    TASK_TITLE_BONUS,
     WEIGHTS,
 )
 from .recommendation.ranking import Candidate, profile_score, select
+from .recommendation.tasks import TASKS, task_evidence, task_matches, task_shortlist
 
 __all__ = ["Engine", "SEMANTIC_CONFIG", "WEIGHTS", "sector_compatibility", "topics_for"]
 
@@ -88,6 +91,8 @@ class Engine:
             return response(
                 clarification="Какую задачу решаем: привлечь клиентов, разобраться с финансами или запустить бизнес?"
             )
+        if intent.clarification:
+            return response(clarification=intent.clarification)
         eligible = []
         for index, material in enumerate(self.materials):
             reason = exclusion_reason(material, intent, feedback, baseline)
@@ -98,6 +103,8 @@ class Engine:
         if not eligible:
             return response(
                 clarification="Подходящих доступных материалов не осталось. Уточните задачу или проверьте отметки изученного."
+                if excluded_count
+                else "В каталоге нет подтверждённого материала по этой конкретной задаче. Уточните запрос или выберите смежную тему."
             )
 
         evidence = self.index.search(intent.search, baseline)
@@ -106,6 +113,7 @@ class Engine:
         semantic_peak = float(evidence.semantic[eligible].max()) if evidence.semantic is not None else 0.0
         if (
             not intent.topics
+            and not intent.tasks
             and word_peak < 0.10
             and char_peak < 0.18
             and semantic_peak < SEMANTIC_CONFIG["floor"]
@@ -117,6 +125,7 @@ class Engine:
             not baseline
             and evidence.semantic is not None
             and not intent.topics
+            and not intent.tasks
             and word_peak < SEMANTIC_CONFIG["unknown_word_floor"]
             and semantic_peak < SEMANTIC_CONFIG["unknown_floor"]
         ):
@@ -134,8 +143,16 @@ class Engine:
             material = self.materials[index]
             matched_topics = intent.topics & material_topics(material)
             lexical_relevance = min(
-                1.0, float(lexical[index]) + ((0.20 if baseline else 0.12) if matched_topics else 0)
+                1.0,
+                float(lexical[index])
+                + ((0.20 if baseline else 0.0 if intent.tasks else 0.12) if matched_topics else 0),
             )
+            matched_tasks = task_evidence(material, intent.tasks)
+            title_tasks = intent.tasks & task_matches(material.title)
+            if matched_tasks:
+                lexical_relevance = min(
+                    1.0, lexical_relevance + (TASK_TITLE_BONUS if title_tasks else TASK_DESCRIPTION_BONUS)
+                )
             semantic_similarity = float(evidence.semantic[index]) if evidence.semantic is not None else None
             if (
                 semantic_similarity is not None
@@ -172,6 +189,9 @@ class Engine:
                     else "Найдено текстовое совпадение с темой поиска"
                 ]
             )
+            if matched_tasks:
+                signals.update({"task_" + key: 1.0 for key in sorted(matched_tasks)})
+                reasons = task_reasons(material, matched_tasks)
             if "fixed_ad_spend" in intent.constraints:
                 constraint_signals, reasons = constraint_evidence(material)
                 signals.update(constraint_signals)
@@ -189,7 +209,10 @@ class Engine:
             return response(
                 clarification="Точного материала не нашли. Уточните задачу или выберите более общее направление."
             )
-        if intent.constraints:
+        if intent.tasks:
+            candidates = task_shortlist(candidates, GENERAL_RELATIVE_FLOOR)
+            limit = min(limit, CONSTRAINT_LIMIT)
+        elif intent.constraints or intent.requested_format or not baseline:
             strongest = max(candidate.score for candidate in candidates)
             candidates = [
                 candidate for candidate in candidates if candidate.score >= strongest * GENERAL_RELATIVE_FLOOR
@@ -213,4 +236,14 @@ class Engine:
             notice = "Отраслевое совпадение не подтверждено. Это общие материалы по бизнес-задаче; подборка ограничена тремя позициями."
         elif max(item.signals["relevance"] for item in items) < 0.20:
             notice = "Совпадение слабое: это ближайшие материалы, а не точный ответ. Уточните задачу для более полезной подборки."
+        missing_tasks = intent.tasks - {
+            key.removeprefix("task_") for item in items for key in item.signals if key.startswith("task_")
+        }
+        if missing_tasks:
+            missing = (
+                "Нет подтверждённого материала для части запроса: "
+                + "; ".join(TASKS[key][0] for key in sorted(missing_tasks))
+                + "."
+            )
+            notice = (notice + " " if notice else "") + missing
         return response(items=items, notice=notice, count=count, general=general)

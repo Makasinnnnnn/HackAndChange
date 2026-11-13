@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from ..models import Material
 from .intent import FORMAT_NAMES, industry_key, material_topics
-from .policy import DIVERSITY_PENALTY, WEIGHTS
+from .policy import DIVERSITY_PENALTY, TASK_COVERAGE_BONUS, WEIGHTS
 
 
 @dataclass
@@ -15,6 +15,8 @@ class Candidate:
     score: float
     rank_score: float = 0.0
     diversity_penalty: float = 0.0
+    coverage_bonus: float = 0.0
+    coverage_priority: bool = False
 
 
 def profile_score(material, profile, liked_topics, query, relevance, signals, reasons):
@@ -89,11 +91,33 @@ def select(candidates, limit, baseline=False):
                     previous.material.source_type == candidate.material.source_type for previous in selected
                 )
             )
-            return candidate.score - penalty, candidate.signals["relevance"], candidate.material.id
+            covered = {key for previous in selected for key in previous.signals if key.startswith("task_")}
+            coverage = (
+                0.0
+                if baseline
+                else TASK_COVERAGE_BONUS
+                * sum(key.startswith("task_") and key not in covered for key in candidate.signals)
+            )
+            return candidate.score - penalty + coverage, candidate.signals["relevance"], candidate.material.id
 
-        chosen = max(remaining, key=rank)
+        covered_tasks = {key for previous in selected for key in previous.signals if key.startswith("task_")}
+        uncovered_pool = [
+            candidate
+            for candidate in remaining
+            if any(key.startswith("task_") and key not in covered_tasks for key in candidate.signals)
+        ]
+        prioritize_coverage = bool(not baseline and selected and uncovered_pool)
+        chosen = max(uncovered_pool if prioritize_coverage else remaining, key=rank)
+        chosen.coverage_priority = prioritize_coverage
         chosen.rank_score = rank(chosen)[0]
-        chosen.diversity_penalty = chosen.score - chosen.rank_score
+        covered = {key for previous in selected for key in previous.signals if key.startswith("task_")}
+        chosen.coverage_bonus = (
+            0.0
+            if baseline
+            else TASK_COVERAGE_BONUS
+            * sum(key.startswith("task_") and key not in covered for key in chosen.signals)
+        )
+        chosen.diversity_penalty = max(0.0, chosen.score + chosen.coverage_bonus - chosen.rank_score)
         selected.append(chosen)
         remaining.remove(chosen)
     return selected

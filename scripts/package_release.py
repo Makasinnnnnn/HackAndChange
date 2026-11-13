@@ -11,12 +11,14 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["version"]
+SLIDE_VERSION = ".".join(VERSION.split(".")[:2])
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output", type=Path, default=ROOT.parent / "output/hackandchange/alfa-route-1.1.0.zip"
+        "--output", type=Path, default=ROOT.parent / f"output/hackandchange/alfa-route-{VERSION}.zip"
     )
     args = parser.parse_args()
     target = args.output.resolve()
@@ -35,7 +37,7 @@ if __name__ == "__main__":
             ):
                 raise SystemExit("Unexpected private file in archive: " + name)
         assert "README.md" in names and "compose.yaml" in names
-        assert "output/presentation/alfa-route-1.1.pdf" in names
+        assert f"output/presentation/alfa-route-{SLIDE_VERSION}.pdf" in names
         demo = json.loads(archive.read("backend/data/demo.json"))
         assert all(item["provenance"] == "synthetic" for item in demo)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()

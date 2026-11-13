@@ -29,7 +29,7 @@ def test_real_local_encoder_handles_paraphrase_and_preserves_baseline(engine, mo
     query = "Как перестать делать всю работу самому и передать ответственность подчиненным?"
     result = model.recommend(query, Profile(urgency="quick"))
     assert result.items and result.items[0].material.id == "demo-delegation"
-    assert result.algorithm == "e5-hybrid-personal-v5"
+    assert result.algorithm == "e5-hybrid-personal-v6"
     a = engine.recommend(query, baseline=True)
     b = model.recommend(query, baseline=True)
     assert [i.material.id for i in a.items] == [i.material.id for i in b.items]

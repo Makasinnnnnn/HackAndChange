@@ -14,7 +14,7 @@ test.beforeEach(async({page})=>{
 test('task → explanation → material → feedback → persisted progress',async({page})=>{
   await page.getByRole('button',{name:/Привлечь клиентов/}).click();
   const first=page.locator('.route-card').first();
-  await expect(first.locator('.reason')).toContainText('По задаче');
+  await expect(first.locator('.reason')).toContainText(/По задаче|В названии|В описании/);
   const title=await first.getByRole('heading',{level:3}).textContent();
   await first.getByRole('button',{name:'Открыть материал',exact:true}).click();
   await expect(page.getByRole('dialog')).toBeVisible();
