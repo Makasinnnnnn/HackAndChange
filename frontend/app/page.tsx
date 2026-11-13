@@ -4,8 +4,11 @@ import Image from 'next/image';
 import customersArt from './art/customers.webp';
 import financeArt from './art/finance.webp';
 import launchArt from './art/launch.webp';
-import {useCallback, useEffect, useRef, useState} from 'react';
-import {ArrowUpRight, ArrowRight, BookOpen, Check, CheckCheck, CircleHelp, FileText, FlaskConical, Layers3, LoaderCircle, Menu, Plus, Route as RouteIcon, Search, Sparkles, ThumbsDown, ThumbsUp, TrendingUp, Upload, X} from 'lucide-react';
+import {useEffect, useRef, useState, type DragEvent} from 'react';
+import {ChoiceField} from './choice-field';
+import {NavigationIcon} from './navigation-icon';
+import {MaterialCopy} from './material-copy';
+import {ArrowUpRight, ArrowRight, BookOpen, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, FileText, LoaderCircle, Plus, Search, Sparkles, ThumbsDown, ThumbsUp, Upload, X} from 'lucide-react';
 
 type Tab = 'route' | 'progress' | 'catalog' | 'jury';
 type Profile = {stage?:string|null; industry?:string|null; experience?:string|null; format?:string|null; urgency?:string|null};
@@ -14,7 +17,13 @@ type Item = {material:Material; reasons:string[]; next_action:string; phase:stri
 type Route = {route_id:string; query:string; profile:Profile; items:Item[]; clarification:string|null; notice:string|null; elapsed_ms:number; algorithm:string; excluded_count:number; candidate_count:number; active_profile_fields:string[]; catalog_version:string};
 type Evaluation = {status:string;note:string;metrics?:Record<string,Record<string,Record<string,number>>>|null;judged_profiles?:number};
 type Persona = {id:string; name:string; situation:string; query:string; profile:Profile};
+const catalogPageSize = 12;
 const formats:Record<string,string> = {article:'Статья',course:'Курс',document:'Шаблон',webinar:'Вебинар',podcast:'Подкаст',glossary:'Термин',calculator:'Калькулятор'};
+const profileChoices = {
+  stage: [{value: 'idea', label: 'Есть идея'}, {value: 'start', label: 'Недавно запустился'}, {value: 'growth', label: 'Развиваю бизнес'}],
+  experience: [{value: 'beginner', label: 'Начинающий'}, {value: 'experienced', label: 'Есть опыт'}],
+  format: Object.entries(formats).map(([value, label]) => ({value, label})),
+};
 const access:Record<string,string> = {free:'Бесплатно',paid:'Платный материал',subscription:'По подписке',unknown:'Условия на сайте'};
 const signalsText:Record<string,string> = {helpful:'Полезно',not_relevant:'Не подходит',known:'Уже знаю',completed:'Изучено'};
 const examples = [
@@ -44,6 +53,8 @@ export default function Home() {
   const [selected,setSelected] = useState<Material|null>(null);
   const [profileOpen,setProfileOpen] = useState(false);
   const [mobileMenu,setMobileMenu] = useState(false);
+  const [draggingHistory,setDraggingHistory] = useState(false);
+  const [personaId,setPersonaId] = useState('');
   const [intent,setIntent] = useState<{goal:string;clarification:string|null}|null>(null);
   const [aiBusy,setAiBusy] = useState(false);
   const [aiEnabled,setAiEnabled] = useState(false);
@@ -51,14 +62,22 @@ export default function Home() {
   const [busy,setBusy] = useState(false);
   const [ready,setReady] = useState(false);
   const [error,setError] = useState('');
-  const [toast,setToast] = useState('');
+  const [toast,setToast] = useState({message:'', visible:false});
   const [info,setInfo] = useState<{catalog_mode:string;catalog_count:number;semantic_model:string|null;industries:string[]}>({catalog_mode:'demo',catalog_count:0,semantic_model:null,industries:[]});
   const [evaluation,setEvaluation] = useState<Evaluation>({status:'',note:''});
   const textarea = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const dialogTitle = useRef<HTMLHeadingElement>(null);
+  const catalogTop = useRef<HTMLElement>(null);
+  const pageCount = Math.ceil(catalog.total / catalogPageSize);
+  const currentPage = Math.floor(offset / catalogPageSize) + 1;
+  const pageNumbers = Array.from(new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount]))
+    .filter(number=>number >= 1 && number <= pageCount).sort((a,b)=>a-b);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menuClose = useRef<HTMLButtonElement>(null);
+  const menuPanel = useRef<HTMLElement>(null);
   const restoreMenuFocus = useRef(false);
+  const menuHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const learnCount = Object.values(history).filter(v=>v==='completed'||v==='known').length;
 
   useEffect(()=>{let active=true; Promise.all([
@@ -66,13 +85,49 @@ export default function Home() {
     api<Persona[]>('/demo/profiles'), api<Evaluation>('/evaluation/results')
   ]).then(([data,people,e])=>{if(!active)return;setProfile(data.profile);setQuery(data.query);setHistory(data.signals);setInfo(data);setAiEnabled(Boolean((data as typeof data & {llm_enabled?:boolean}).llm_enabled));setAiExternal(Boolean((data as typeof data & {llm_external?:boolean}).llm_external));setPersonas(people);setEvaluation(e);setReady(true);}).catch(()=>{if(active)setError('Не удалось подключиться к приложению. Обновите страницу после запуска сервера.');}); return()=>{active=false;};},[]);
 
-  useEffect(()=>{if(selected){dialog.current?.showModal();}else{dialog.current?.close();}},[selected]);
-  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(id);},[toast]);
+  useEffect(()=>{
+    if (selected) {
+      dialog.current?.showModal();
+      dialogTitle.current?.focus({preventScroll:true});
+    } else {
+      dialog.current?.close();
+    }
+  },[selected]);
 
-  const loadCatalog = useCallback(async(search:string,page:number)=>{
-    try{setCatalog(await api(`/catalog?q=${encodeURIComponent(search)}&offset=${page}&limit=12`));}catch(e){setError((e as Error).message);}
+  useEffect(()=>{
+    const root = document.documentElement;
+    const usePointer = ()=>{root.dataset.input = 'pointer';};
+    const useKeyboard = (event: KeyboardEvent)=>{
+      if (event.key === 'Tab') root.dataset.input = 'keyboard';
+    };
+    document.addEventListener('pointerdown', usePointer, true);
+    document.addEventListener('keydown', useKeyboard, true);
+    return ()=>{
+      document.removeEventListener('pointerdown', usePointer, true);
+      document.removeEventListener('keydown', useKeyboard, true);
+      delete root.dataset.input;
+    };
   },[]);
-  useEffect(()=>{if(tab==='catalog'){const timer=setTimeout(()=>loadCatalog(catalogQuery,offset),250);return()=>clearTimeout(timer);}},[tab,catalogQuery,offset,loadCatalog]);
+  useEffect(()=>{
+    if(!toast.visible)return;
+    const id=setTimeout(()=>setToast(current=>({...current, visible:false})),3200);
+    return()=>clearTimeout(id);
+  },[toast]);
+
+
+  useEffect(()=>{
+    if(tab!=='catalog')return;
+    let active = true;
+    const timer = setTimeout(async()=>{
+      try {
+        const result = await api<{items:Material[];total:number}>(`/catalog?q=${encodeURIComponent(catalogQuery)}&offset=${offset}&limit=${catalogPageSize}`);
+        if(active)setCatalog(result);
+      } catch(e) {
+        if(active)setError((e as Error).message);
+      }
+    },250);
+    return ()=>{active=false;clearTimeout(timer);};
+  },[tab,catalogQuery,offset]);
   useEffect(()=>{if(tab==='progress')api<{items:{material:Material;signal:string}[]}>('/progress').then(d=>setProgress(d.items)).catch(e=>setError(e.message));},[tab,history]);
 
   useEffect(()=>{
@@ -88,9 +143,14 @@ export default function Home() {
         setMobileMenu(false);
       }
     }
-    const desktop = window.matchMedia('(min-width: 761px)');
+    const desktop = window.matchMedia('(width > 1100px)');
     function onResize(event: MediaQueryListEvent) {
-      if (event.matches) setMobileMenu(false);
+      if (event.matches) {
+        setMobileMenu(false);
+        if (document.activeElement === menuClose.current) {
+          menuPanel.current?.querySelector<HTMLButtonElement>('[aria-current="page"]')?.focus();
+        }
+      }
     }
     window.addEventListener('keydown', onEscape);
     desktop.addEventListener('change', onResize);
@@ -99,6 +159,8 @@ export default function Home() {
       desktop.removeEventListener('change', onResize);
     };
   },[mobileMenu]);
+
+  useEffect(()=>()=>clearTimeout(menuHoverTimer.current),[]);
 
   function closeMenu() {
     restoreMenuFocus.current = true;
@@ -111,6 +173,11 @@ export default function Home() {
     if (mobileMenu) closeMenu();
     setError('');
   }
+  function goToCatalogPage(page:number) {
+    setOffset((page - 1) * catalogPageSize);
+    catalogTop.current?.scrollIntoView({block:'start'});
+  }
+
   function patchProfile(key:keyof Profile,value:string){if(busy)return;setProfile(p=>({...p,[key]:value||null}));setComparison(null);}
   async function recommend(override?:string){
     const value=override??query;if(override!==undefined)setQuery(override);setBusy(true);setError('');
@@ -122,45 +189,73 @@ export default function Home() {
       if(result.intent)setIntent(result.intent);else setError('AI-помощник сейчас недоступен. Можно построить маршрут по исходной задаче.');
     }catch{setError('AI-помощник не ответил. Можно построить маршрут обычным способом.');}finally{setAiBusy(false);}
   }
+  function dropHistory(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDraggingHistory(false);
+    if (busy || !ready) return;
+    const files = event.dataTransfer.files;
+    if (files.length > 1) {
+      setError('Выберите один JSON-файл.');
+      return;
+    }
+    if (files[0]) void importHistory(files[0]);
+  }
   async function importHistory(file:File){
     setError('');if(file.size>16000){setError('Файл истории должен быть меньше 16 КБ.');return;}
     setBusy(true);
-    try{const body=JSON.parse(await file.text());const result=await api<{signals:Record<string,string>;imported:number}>('/history/import',body);setHistory(result.signals);setToast(`Добавлено завершённых курсов: ${result.imported}`);setComparison(null);}
+    try{const body=JSON.parse(await file.text());const result=await api<{signals:Record<string,string>;imported:number}>('/history/import',body);setHistory(result.signals);setToast({message:`Добавлено завершённых курсов: ${result.imported}`,visible:true});setComparison(null);}
     catch{setError('История не импортирована. Проверьте формат файла и версию каталога.');}finally{setBusy(false);}
   }
   async function compare(){setBusy(true);setError('');try{setComparison(await api('/demo/compare',{query,profile}));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   async function feedback(materialId:string,signal:string){setBusy(true);setError('');try{
     const result=await api<{signals:Record<string,string>}>('/feedback',{material_id:materialId,signal});setHistory(result.signals);
-    setToast(signal==='reset'?'Отметка удалена':'Сохранено. Следующая подборка учтёт вашу отметку.');setComparison(null);
+    setToast({message:signal==='reset'?'Отметка удалена':'Отметка сохранена',visible:true});setComparison(null);
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
-  async function openMaterial(material:Material){try{setSelected(await api<Material>('/catalog/'+encodeURIComponent(material.id)));}catch(e){setError((e as Error).message);}}
-  function choosePersona(id:string){const p=personas.find(p=>p.id===id);if(p){setQuery(p.query);setProfile(p.profile);setComparison(null);}}
+  async function openMaterial(material:Material){setError('');setToast(current=>({...current,visible:false}));try{setSelected(await api<Material>('/catalog/'+encodeURIComponent(material.id)));}catch(e){setError((e as Error).message);}}
+  function choosePersona(id:string){const p=personas.find(p=>p.id===id);if(p){setPersonaId(id);setQuery(p.query);setProfile(p.profile);setComparison(null);}}
 
   function materialTags(m:Material){return <div className="material-tags"><span className={'format '+m.source_type}>{m.source_type==='document'?<FileText size={13}/>:<BookOpen size={13}/>} {formats[m.source_type]}</span><span className={m.access==='free'?'free':''}>{access[m.access]}</span>{m.duration&&<span>{m.duration}</span>}</div>;}
+  function feedbackNotice() {
+    return <div className="toast" role="status" aria-hidden={!toast.visible} data-visible={toast.visible}>
+      <Check size={18} aria-hidden="true"/><span>{toast.message}</span>
+    </div>;
+  }
+
   function feedbackButtons(m:Material){return <div className="feedback" aria-label={'Обратная связь: '+m.title}>
-    {([{signal:'helpful',label:'Полезно',Icon:ThumbsUp},{signal:'not_relevant',label:'Не подходит',Icon:ThumbsDown},{signal:'known',label:'Уже знаю',Icon:Check},{signal:'completed',label:'Изучено',Icon:CheckCheck}]).map(({signal,label,Icon})=><button key={signal} className={history[m.id]===signal?'active':''} disabled={busy} onClick={()=>feedback(m.id,history[m.id]===signal?'reset':signal)} aria-pressed={history[m.id]===signal}><Icon size={14}/><span>{label}</span></button>)}
+    {([{signal:'helpful',label:'Полезно',Icon:ThumbsUp},{signal:'not_relevant',label:'Не подходит',Icon:ThumbsDown},{signal:'known',label:'Уже знаю',Icon:Check},{signal:'completed',label:'Изучено',Icon:CheckCheck}]).map(({signal,label,Icon})=><button key={signal} aria-label={label} title={label} disabled={busy} onClick={()=>feedback(m.id,history[m.id]===signal?'reset':signal)} aria-pressed={history[m.id]===signal}><Icon size={14}/><span>{label}</span></button>)}
   </div>;}
-  function routeCard(item:Item,index:number,diagnostic=false){const m=item.material;return <article className="route-card" key={m.id}>
-    <div className="step-number">{index + 1}</div><div className="route-card-content">
-      <div className="card-overline">{item.phase}{history[m.id]&&<span className="saved"><Check size={12}/>{signalsText[history[m.id]]}</span>}</div>
-      {materialTags(m)}<button className="card-title" onClick={()=>openMaterial(m)}>{m.title}<ArrowUpRight size={20}/></button>
+  function routeCard(item:Item,index:number,total:number,diagnostic=false){const m=item.material;return <article className="route-card" key={m.id}>
+    <div className="route-card-meta">
+      <span className="step-number">
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <circle className="step-track" cx="22" cy="22" r="19"/>
+          <circle className="step-arc" cx="22" cy="22" r="19" pathLength="100" strokeDasharray={`${Math.round((index + 1) * 100 / total)} 100`}/>
+        </svg>
+        {index + 1}
+      </span>
+      <span>{item.phase}</span>
+      {history[m.id]&&<span className="saved"><Check size={14}/>{signalsText[history[m.id]]}</span>}
+    </div>
+    <div className="route-card-content">
+      {materialTags(m)}
+      <h3 className="route-card-title">{m.title}</h3>
       <p className="description">{m.description}</p>
-      <div className="reason"><Sparkles size={15}/><span>{item.reasons.slice(0,2).join(' · ')}</span></div>
-      <div className="next-action"><span>Следующий шаг</span><p>{item.next_action}</p></div>
+      <div className="reason"><span><strong>Почему этот материал</strong><br/>{item.reasons.slice(0,2).join(' · ')}</span></div>
+      <div className="next-action"><strong>Следующий шаг</strong><p>{item.next_action}</p></div>
       {diagnostic&&<details className="diagnostic"><summary>Расчёт ранжирования · {item.rank_score.toFixed(3)}</summary><dl>{Object.entries(item.signals).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v.toFixed(3)}</dd></div>)}</dl><ul>{item.reasons.map(r=><li key={r}>{r}</li>)}</ul></details>}
-      <div className="card-footer"><button className="text-button" onClick={()=>openMaterial(m)}>Открыть материал <ArrowRight size={15}/></button>{!diagnostic&&feedbackButtons(m)}</div>
+      <div className="card-footer"><button className="primary route-open" aria-label="Открыть материал" onClick={()=>openMaterial(m)}><span>Открыть<span className="route-open-detail"> материал</span></span><ArrowRight size={15} aria-hidden="true"/></button>{!diagnostic&&feedbackButtons(m)}</div>
     </div></article>;}
 
   const profileForm=<div className="profile-fields" id="profile-fields">
-    <label>Этап бизнеса<select disabled={busy} value={profile.stage??''} onChange={e=>patchProfile('stage',e.target.value)}><option value="">Можно пропустить</option><option value="idea">Есть идея</option><option value="start">Недавно запустился</option><option value="growth">Развиваю бизнес</option></select></label>
-    <label>Сфера<select disabled={busy} value={profile.industry??''} onChange={e=>patchProfile('industry',e.target.value)}><option value="">Не указана</option>{(info.industries.length?info.industries:['HoReCa','Торговля','Услуги','IT']).map(v=><option key={v}>{v}</option>)}</select></label>
-    <label>Опыт<select disabled={busy} value={profile.experience??''} onChange={e=>patchProfile('experience',e.target.value)}><option value="">Можно пропустить</option><option value="beginner">Начинающий</option><option value="experienced">Есть опыт</option></select></label>
-    <label>Удобный формат<select disabled={busy} value={profile.format??''} onChange={e=>patchProfile('format',e.target.value)}><option value="">Любой формат</option>{Object.entries(formats).map(([k,v])=><option value={k} key={k}>{v}</option>)}</select></label>
+    <ChoiceField label="Этап бизнеса" value={profile.stage??''} options={profileChoices.stage} emptyLabel="Можно пропустить" clearable disabled={busy} onChange={value=>patchProfile('stage', value)}/>
+    <ChoiceField label="Сфера" value={profile.industry??''} options={(info.industries.length ? info.industries : ['HoReCa', 'Торговля', 'Услуги', 'IT']).map(value=>({value, label:value}))} emptyLabel="Не указана" clearable disabled={busy} onChange={value=>patchProfile('industry', value)}/>
+    <ChoiceField label="Опыт" value={profile.experience??''} options={profileChoices.experience} emptyLabel="Можно пропустить" clearable disabled={busy} onChange={value=>patchProfile('experience', value)}/>
+    <ChoiceField label="Удобный формат" value={profile.format??''} options={profileChoices.format} emptyLabel="Любой формат" clearable disabled={busy} onChange={value=>patchProfile('format', value)}/>
     <button className="text-button muted" onClick={()=>{setProfile({});setComparison(null);}}>Сбросить профиль</button>
   </div>;
 
   return <div className="app-shell">
-    <aside id="main-menu" className={mobileMenu ? 'sidebar open' : 'sidebar'}>
+    <aside ref={menuPanel} id="main-menu" className={mobileMenu ? 'sidebar open' : 'sidebar'}>
       <div className="sidebar-header">
         <a className="brand" href="/" aria-label="Альфа-Маршрут, главная">
           <span className="brand-mark" aria-hidden="true"/>
@@ -169,23 +264,45 @@ export default function Home() {
         <button type="button" ref={menuClose} className="mobile-menu menu-close" aria-label="Закрыть меню" onClick={closeMenu}><X size={22}/></button>
       </div>
       <nav aria-label="Основная навигация">
-        {([{id:'route',label:'Мой маршрут',Icon:RouteIcon},{id:'progress',label:'Мой прогресс',Icon:TrendingUp},{id:'catalog',label:'Каталог знаний',Icon:Layers3},{id:'jury',label:'Для жюри',Icon:FlaskConical}] as const).map(({id,label,Icon})=>(
+        {([{id:'route',label:'Мой маршрут'},{id:'progress',label:'Мой прогресс'},{id:'catalog',label:'Каталог знаний'},{id:'jury',label:'Для жюри'}] as const).map(({id,label})=>(
           <button key={id} className={tab===id?'nav-item selected':'nav-item'} aria-current={tab===id?'page':undefined} onClick={()=>navigate(id)}>
-            <Icon size={20} aria-hidden="true"/>{label}
+            <NavigationIcon tab={id}/>{label}
           </button>
         ))}
       </nav>
-      <p className="sidebar-bottom">Hack&Change 2026<br/>Конкурсный прототип</p>
+      <p className="sidebar-bottom">Hack&Change 2026</p>
     </aside>
-    {mobileMenu&&<div aria-hidden="true" className="menu-backdrop" onClick={closeMenu}/>}
+    <div aria-hidden="true" className={mobileMenu ? 'menu-backdrop visible' : 'menu-backdrop'} onClick={closeMenu}/>
     <div className="main-shell" inert={mobileMenu}>
-      <header className="topbar">
-        <button type="button" ref={menuTrigger} className="mobile-menu" aria-label="Открыть меню" aria-expanded={mobileMenu} aria-controls="main-menu" onClick={()=>setMobileMenu(true)}><Menu size={23}/></button>
-        <span className="mode-badge">{info.catalog_mode==='demo'?'DEMO · учебный каталог':'Локальный каталог кейса'}</span>
-      </header>
       <main>
-        <h1 className="page-heading">{{route:'Персональный маршрут',progress:'Мой прогресс',catalog:'Каталог знаний',jury:'Сравнение рекомендаций'}[tab]}</h1>
-        {error&&<div className="error-banner" role="alert">{error}<button aria-label="Закрыть сообщение" onClick={()=>setError('')}><X size={16}/></button></div>}
+        <div className="compact-navigation">
+          <button
+            type="button"
+            ref={menuTrigger}
+            className="brand compact-menu-trigger"
+            aria-label="Альфа-Маршрут, открыть меню"
+            aria-expanded={mobileMenu}
+            aria-controls="main-menu"
+            onPointerMove={event=>{
+              if(event.pointerType==='mouse'&&menuHoverTimer.current===undefined){
+                menuHoverTimer.current=setTimeout(()=>setMobileMenu(true),200);
+              }
+            }}
+            onPointerLeave={()=>{
+              clearTimeout(menuHoverTimer.current);
+              menuHoverTimer.current=undefined;
+            }}
+            onClick={()=>{
+              clearTimeout(menuHoverTimer.current);
+              setMobileMenu(true);
+            }}
+          >
+            <span className="brand-mark" aria-hidden="true"/>
+            <span>Альфа-Маршрут</span>
+          </button>
+        </div>
+        <h1 className={tab==='route'||tab==='jury' ? 'page-heading aligned-heading' : 'page-heading'}>{{route:'Персональный маршрут',progress:'Мой прогресс',catalog:'Каталог знаний',jury:'Сравнение рекомендаций'}[tab]}</h1>
+        {error&&!selected&&<div className="error-banner" role="alert">{error}<button aria-label="Закрыть сообщение" onClick={()=>setError('')}><X size={16}/></button></div>}
         {(tab==='route'||tab==='jury')&&<div className="workspace">
           <section className="task-card" aria-labelledby="task-title">
             <div className="section-top">
@@ -212,19 +329,36 @@ export default function Home() {
           </aside>
         </div>}
 
-        {tab==='route'&&!route&&<section className="starting-points"><div className="section-label"><h2>Можно начать с этого</h2></div><div className="example-grid">{examples.map(e=><button className="example-card" key={e.title} disabled={busy||!ready} onClick={()=>recommend(e.query)}><span><strong>{e.title}</strong><small>{e.topic}</small></span><Image className="example-art" src={e.art} alt="" width={128} height={128} unoptimized/><ArrowUpRight size={18} aria-hidden="true"/></button>)}</div><div className="honesty-note"><CircleHelp size={17}/><p>{info.catalog_mode==='demo'?'Сейчас вы в учебном демо: материалы созданы для проверки прототипа и не являются курсами Альфа-Курса.':'Рекомендации используют метаданные локальной выгрузки. Условия доступа уточняйте на странице источника.'} {info.catalog_count>0&&`В каталоге ${info.catalog_count} материалов.`}</p></div></section>}
-        {tab==='route'&&route&&<section className="route-results" aria-live="polite"><div className="section-label"><div><h2>Ваш маршрут{route.items.length>0&&<span className="count-badge">{route.items.length} шагов</span>}</h2></div><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
-          <p className="route-context">Ваша задача: {route.query||'пока не задана'}</p>{route.active_profile_fields.length>0&&<p className="small-note">Учитываем только заполненный контекст. Материалы без известных признаков уровня и стадии не получают таких объяснений.</p>}{route.clarification&&<div className="empty-state"><CircleHelp size={28}/><h3>Давайте найдём точку старта</h3><p>{route.clarification}</p><div className="empty-actions">{examples.map(e=><button className="secondary" key={e.title} disabled={busy} onClick={()=>recommend(e.query)}>{e.title}</button>)}</div></div>}
+        {tab==='route'&&!route&&<section className="starting-points"><div className="section-label"><h2>Можно начать с этого</h2></div><div className="example-grid">{examples.map(e=><button className="example-card" key={e.title} disabled={busy||!ready} onClick={()=>recommend(e.query)}><span><strong>{e.title}</strong><small>{e.topic}</small></span><Image className="example-art" src={e.art} alt="" width={128} height={128} unoptimized/><ArrowUpRight size={18} aria-hidden="true"/></button>)}</div></section>}
+        {tab==='route'&&route&&<section className="route-results" aria-live="polite"><div className="route-intro">
+          <div className="section-label"><h2>Ваш маршрут{route.items.length>0&&<span className="count-badge">{route.items.length} шагов</span>}</h2><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
+          {route.query&&<p className="route-context"><strong>Ваша задача</strong><br/>{route.query}</p>}
+          {route.active_profile_fields.length>0&&<p className="small-note">Учитываем только заполненный контекст. Материалы без известных признаков уровня и стадии не получают таких объяснений.</p>}
+          </div>{route.clarification&&<div className="empty-state"><CircleHelp size={28}/><h3>Давайте найдём точку старта</h3><p>{route.clarification}</p><div className="empty-actions">{examples.map(e=><button className="secondary" key={e.title} disabled={busy} onClick={()=>recommend(e.query)}>{e.title}</button>)}</div></div>}
           {route.notice&&<div className="notice">{route.notice}</div>}
-          <div className="route-layout"><div>{route.items.map((item,i)=>routeCard(item,i))}</div>{route.items.length>0&&<aside className="route-summary"><h3>Не нужно изучать всё сразу</h3><p>Начните с первого полезного шага. После изучения отметьте материал — следующая подборка учтёт ваш прогресс.</p><div className="summary-rule"/><div><strong>{learnCount}</strong><span>материалов освоено<br/>в этой демо-сессии</span></div><button className="secondary" disabled={busy} onClick={()=>recommend()}>Обновить с учётом отметок <ArrowRight size={15}/></button><small>История сохраняется в этом браузере и базе приложения. Реальные пользователи платформы не подключены.</small></aside>}</div>
+          <div className="route-layout"><div>{route.items.map((item,i)=>routeCard(item,i,route.items.length))}</div>{route.items.length>0&&<aside className="route-summary">
+            <h3>Ваш прогресс</h3>
+            <p className="summary-count"><strong>{learnCount}</strong><span>Материалов освоено</span></p>
+            <p>Отметьте материал, чтобы учесть его в следующей подборке.</p>
+            <button className="secondary" disabled={busy} onClick={()=>recommend()}>Обновить маршрут <ArrowRight size={17}/></button>
+          </aside>}</div>
         </section>}
 
-        {tab==='jury'&&<section className="jury-section"><div className="jury-toolbar"><div><h2>Один запрос. Два подхода.</h2><p>Выберите синтетический профиль или используйте свою задачу выше.</p></div><label className="sr-only" htmlFor="persona">Демонстрационный предприниматель</label><select disabled={busy} id="persona" defaultValue="" onChange={e=>choosePersona(e.target.value)}><option value="" disabled>Выбрать предпринимателя</option>{personas.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-          <div className="evaluation-note"><FlaskConical size={21}/><div><strong>{evaluation.status==='calculated'?'Результаты экспертной оценки':'Метрики качества: ожидается экспертная оценка'}</strong><p>{evaluation.note||'Результаты ещё не рассчитаны.'}</p></div></div>
-          {evaluation.metrics&&<div className="metrics-scroll"><table className="metrics-table"><caption>Offline-метрики на размеченных профилях: {evaluation.judged_profiles}</caption><thead><tr><th>Выборка</th><th>Алгоритм</th><th>P@5</th><th>nDCG@5</th><th>MRR@5</th></tr></thead><tbody>{Object.entries(evaluation.metrics).flatMap(([split,algorithms])=>Object.entries(algorithms).map(([algorithm,m])=><tr key={split+algorithm}><td>{split}</td><td>{algorithm}</td><td>{m.precision_at_5.toFixed(3)}</td><td>{m.ndcg_at_5.toFixed(3)}</td><td>{m.mrr_at_5.toFixed(3)}</td></tr>))}</tbody></table></div>}{comparison&&<><p className="small-note">{comparison.note}</p><div className="comparison-grid">{([{title:'Подбор по теме',subtitle:'Baseline · без профиля и истории',route:comparison.baseline},{title:'Персональный маршрут',subtitle:'Задача + известный контекст + обратная связь',route:comparison.personal}]).map((col,i)=><section key={col.title} className={'comparison-column '+(i?'personal':'')}><div className="compare-heading"><span className="compare-letter">{i?'B':'A'}</span><div><h3>{col.title}</h3><p>{col.subtitle}</p></div></div><div className="compare-stats"><span>{col.route.elapsed_ms.toFixed(1)} мс</span><span>{col.route.candidate_count} кандидатов</span><span>{col.route.excluded_count} исключено</span></div>{col.route.clarification&&<div className="notice">{col.route.clarification}</div>}{col.route.items.map((item,index)=>routeCard(item,index,true))}</section>)}</div><p className="small-note">Время измерено для этого запроса на сервере, без сети. Алгоритм: {comparison.personal.algorithm.includes('e5')?'локальная E5 + TF-IDF и персональное ранжирование':'лексический TF-IDF и персональное ранжирование'}. Версия каталога: {comparison.personal.catalog_version}.</p></>}
+        {tab==='jury'&&<section className="jury-section" aria-labelledby="jury-scenario">
+          <div className="jury-setup">
+            <div className="jury-toolbar">
+              <div><h2 id="jury-scenario">Сценарий сравнения</h2><p>Выберите профиль предпринимателя или введите свою задачу выше.</p></div>
+              <ChoiceField label="Демонстрационный предприниматель" value={personaId} options={personas.map(person=>({value:person.id, label:person.name}))} emptyLabel="Выбрать предпринимателя" disabled={busy} onChange={choosePersona}/>
+            </div>
+            <div className="evaluation-note">
+              <h3>{evaluation.status==='calculated'?'Результаты экспертной оценки':'Экспертная оценка'}</h3>
+              <p>{evaluation.note||'Результаты ещё не рассчитаны.'}</p>
+            </div>
+          </div>
+          {evaluation.metrics&&<div className="metrics-scroll"><table className="metrics-table"><caption>Offline-метрики на размеченных профилях: {evaluation.judged_profiles}</caption><thead><tr><th>Выборка</th><th>Алгоритм</th><th>P@5</th><th>nDCG@5</th><th>MRR@5</th></tr></thead><tbody>{Object.entries(evaluation.metrics).flatMap(([split,algorithms])=>Object.entries(algorithms).map(([algorithm,m])=><tr key={split+algorithm}><td>{split}</td><td>{algorithm}</td><td>{m.precision_at_5.toFixed(3)}</td><td>{m.ndcg_at_5.toFixed(3)}</td><td>{m.mrr_at_5.toFixed(3)}</td></tr>))}</tbody></table></div>}{comparison&&<><p className="small-note">{comparison.note}</p><div className="comparison-grid">{([{title:'Подбор по теме',subtitle:'Baseline · без профиля и истории',route:comparison.baseline},{title:'Персональный маршрут',subtitle:'Задача + известный контекст + обратная связь',route:comparison.personal}]).map((col,i)=><section key={col.title} className={'comparison-column '+(i?'personal':'')}><div className="compare-heading"><span className="compare-letter">{i?'B':'A'}</span><div><h3>{col.title}</h3><p>{col.subtitle}</p></div></div><div className="compare-stats"><span>{col.route.elapsed_ms.toFixed(1)} мс</span><span>{col.route.candidate_count} кандидатов</span><span>{col.route.excluded_count} исключено</span></div>{col.route.clarification&&<div className="notice">{col.route.clarification}</div>}{col.route.items.map((item,index)=>routeCard(item,index,col.route.items.length,true))}</section>)}</div><p className="small-note">Время измерено для этого запроса на сервере, без сети. Алгоритм: {comparison.personal.algorithm.includes('e5')?'локальная E5 + TF-IDF и персональное ранжирование':'лексический TF-IDF и персональное ранжирование'}. Версия каталога: {comparison.personal.catalog_version}.</p></>}
         </section>}
 
-        {tab==='catalog'&&<section aria-label="Материалы каталога">
+        {tab==='catalog'&&<section ref={catalogTop} aria-label="Материалы каталога">
           <div className="catalog-toolbar">
             <label className="search-field">
               <Search size={20} aria-hidden="true"/>
@@ -240,11 +374,14 @@ export default function Home() {
             </article>)}
           </div>
           {!catalog.items.length&&<div className="empty-state"><Search size={27}/><h3>Здесь пока ничего нет</h3><p>Попробуйте более короткий или другой запрос.</p></div>}
-          {catalog.total>12&&<div className="pagination">
-            <button className="secondary" disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-12))}>Назад</button>
-            <span>{offset+1}–{Math.min(offset+12,catalog.total)} из {catalog.total}</span>
-            <button className="secondary" disabled={offset+12>=catalog.total} onClick={()=>setOffset(offset+12)}>Далее</button>
-          </div>}
+          {pageCount>1&&<nav className="pagination" aria-label="Страницы каталога">
+            <button className="page-button" aria-label="Предыдущая страница" disabled={currentPage===1} onClick={()=>goToCatalogPage(currentPage-1)}><ChevronLeft size={20}/></button>
+            {pageNumbers.map((number,index)=><span className="page-slot" key={number}>
+              {index>0&&number-pageNumbers[index-1]>1&&<span aria-hidden="true">…</span>}
+              <button className="page-button" aria-label={`Страница ${number}`} aria-current={number===currentPage?'page':undefined} onClick={()=>goToCatalogPage(number)}>{number}</button>
+            </span>)}
+            <button className="page-button" aria-label="Следующая страница" disabled={currentPage===pageCount} onClick={()=>goToCatalogPage(currentPage+1)}><ChevronRight size={20}/></button>
+          </nav>}
         </section>}
 
         {tab==='progress'&&<section aria-label="История обучения">
@@ -256,9 +393,22 @@ export default function Home() {
             <section className="history-import" aria-labelledby="history-title">
               <h2 id="history-title">Добавить историю обучения</h2>
               <p id="history-help">Загрузите JSON с завершёнными курсами из текущего каталога.</p>
-              <label className="file-picker">
-                <input className="sr-only" type="file" accept="application/json,.json" aria-describedby="history-help" disabled={busy||!ready} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importHistory(file);}}/>
-                <span><Upload size={18} aria-hidden="true"/>{busy?'Добавляем…':'Выбрать JSON-файл'}</span>
+              <label
+                className={draggingHistory ? 'file-picker dragging' : 'file-picker'}
+                onDragOver={event=>{
+                  if (!event.dataTransfer.types.includes('Files')) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = busy || !ready ? 'none' : 'copy';
+                  setDraggingHistory(!busy && ready);
+                }}
+                onDragLeave={event=>{
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingHistory(false);
+                }}
+                onDrop={dropHistory}
+              >
+                <input className="sr-only" type="file" accept="application/json,.json" aria-label="Выбрать JSON-файл" aria-describedby="history-help" disabled={busy||!ready} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importHistory(file);}}/>
+                <Upload size={20} aria-hidden="true"/>
+                <span>{busy ? 'Добавляем…' : draggingHistory ? 'Отпустите файл' : 'Перетащите JSON сюда или выберите файл'}</span>
               </label>
             </section>
           </div>
@@ -271,14 +421,41 @@ export default function Home() {
             <button className="card-title" onClick={()=>openMaterial(m)}>{m.title}<ArrowUpRight size={17}/></button>
             <div className="progress-row"><span className="saved"><Check size={13}/>{signalsText[signal]}</span><button className="text-button muted" disabled={busy} onClick={()=>feedback(m.id,'reset')}>Убрать отметку</button></div>
           </article>)}</div>}
-          <p className="small-note">Прогресс сохраняется для этого браузера.</p>
         </section>}
-        <footer><span>Альфа-Маршрут · Hack&Change 2026</span><span>Конкурсная разработка · не официальный сервис банка</span></footer>
       </main>
+      <footer><span>Альфа-Маршрут</span><span>Конкурсная разработка · не официальный сервис банка</span></footer>
     </div>
-    {toast&&<div className="toast" role="status"><Check size={17}/>{toast}</div>}
-    <dialog ref={dialog} className="material-dialog" onCancel={()=>setSelected(null)} onClick={e=>{if(e.target===e.currentTarget)setSelected(null);}}>
-      {selected&&<><button className="dialog-close" aria-label="Закрыть материал" onClick={()=>setSelected(null)}><X size={22}/></button><div className="material-provenance">{selected.provenance==='synthetic'?'УЧЕБНЫЙ ПРИМЕР · DEMO':'МАТЕРИАЛ КАТАЛОГА'}</div>{materialTags(selected)}<h2>{selected.title}</h2><p className="dialog-description">{selected.description}</p>{selected.provenance==='synthetic'?<><div className="demo-warning">Это авторский пример для проверки рекомендаций. Такого курса или материала может не быть на платформе Альфа-Курс.</div>{selected.demo_content?<div className="demo-content">{selected.demo_content}</div>:<p>Подробное содержание платного материала не раскрывается. В этом учебном демо покупка не предусмотрена.</p>}</>:<p>{selected.url?'Подробное содержание и актуальные условия доступны у первоисточника.':'В выгрузке есть относительный адрес, но путь к странице ещё не подтверждён. Ссылку не придумываем.'}</p>}{selected.url&&<a className="primary external-link" href={selected.url} target="_blank" rel="noopener noreferrer">Перейти к первоисточнику <ArrowUpRight size={17}/></a>}<div className="dialog-feedback"><h3>Как вам этот материал?</h3>{feedbackButtons(selected)}</div></>}
+    {!selected&&feedbackNotice()}
+    <dialog ref={dialog} className="material-dialog" aria-labelledby="material-title" onClose={()=>setToast(current=>({...current,visible:false}))} onCancel={()=>setSelected(null)} onClick={e=>{
+      if(e.target!==e.currentTarget)return;
+      const {left,right,top,bottom}=e.currentTarget.getBoundingClientRect();
+      if(e.clientX<left||e.clientX>right||e.clientY<top||e.clientY>bottom)setSelected(null);
+    }}>
+      {selected&&<>
+        <div className="material-scroll">
+          <div className="material-top">
+            {selected.provenance==='synthetic'&&<p className="material-provenance">Учебный пример · DEMO</p>}
+            {materialTags(selected)}
+            <button className="dialog-close" aria-label="Закрыть материал" onClick={()=>setSelected(null)}><X size={22}/></button>
+          </div>
+          <h2 id="material-title" ref={dialogTitle} tabIndex={-1}>{selected.title}</h2>
+          <p className="dialog-description">{selected.description}</p>
+          {selected.provenance==='synthetic'&&selected.demo_content
+            ? <MaterialCopy content={selected.demo_content} description={selected.description}/>
+            : <p className="material-access-note">{selected.provenance==='synthetic'
+              ? 'Это учебный пример. Подробное содержание платного материала недоступно.'
+              : selected.url
+                ? 'Подробное содержание и актуальные условия доступны у первоисточника.'
+                : 'Ссылка на первоисточник пока не подтверждена.'}</p>}
+          {selected.url&&<a className="primary external-link" href={selected.url} target="_blank" rel="noopener noreferrer">Перейти к первоисточнику <ArrowUpRight size={17}/></a>}
+        </div>
+        <div className="dialog-feedback">
+          <h3>Как вам этот материал?</h3>
+          {error&&<p className="error-banner" role="alert">{error}</p>}
+          {feedbackButtons(selected)}
+          {feedbackNotice()}
+        </div>
+      </>}
     </dialog>
   </div>;
 }
