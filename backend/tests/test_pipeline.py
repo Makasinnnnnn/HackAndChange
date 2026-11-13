@@ -86,3 +86,59 @@ def test_scope_describes_displayed_items_not_a_weak_unselected_candidate(monkeyp
     assert route.match_scope == "general"
     assert len(route.items) <= 3
     assert all(item.material.id != "medical" for item in route.items)
+
+@pytest.mark.parametrize('query', [
+    'Как увеличить прибыль без увеличения рекламного бюджета?',
+    'Как увеличить продажи, не увеличивая расходы на рекламу?',
+    'Как повысить рентабельность с тем же рекламным бюджетом?',
+    'Хочу повысить доход без дополнительных затрат на рекламу',
+])
+@pytest.mark.parametrize('baseline', [False, True])
+def test_fixed_ad_spend_requires_a_concrete_mechanism(query, baseline):
+    materials = [
+        Material(id='seasonal', source_type='article', title='Праздничная реклама: рост продаж', topics=['Маркетинг']),
+        Material(id='broad', source_type='course', title='Обучение маркетингу', description='Общий обзор инструментов', topics=['Маркетинг']),
+        Material(id='retain', source_type='article', title='Повторные продажи и удержание клиентов', topics=['Продажи']),
+        Material(id='margin', source_type='article', title='Маржинальность и ценообразование', topics=['Финансы']),
+    ]
+    route = Engine(materials).recommend(query, baseline=baseline)
+    assert route.items
+    assert {item.material.id for item in route.items} <= {'retain', 'margin'}
+    assert all(any(key.startswith('constraint_') for key in item.signals) for item in route.items)
+    assert all(any('ограничение' in reason for reason in item.reasons) for item in route.items)
+    if not baseline:
+        assert len({item.next_action for item in route.items}) == len(route.items)
+
+
+def test_constraint_does_not_ban_advertising_efficiency():
+    materials = [Material(id='ad', source_type='article', title='Как повысить эффективность рекламы и снизить стоимость привлечения', topics=['Маркетинг'])]
+    route = Engine(materials).recommend('Как увеличить прибыль без увеличения рекламного бюджета?')
+    assert [item.material.id for item in route.items] == ['ad']
+
+
+def test_seasonal_campaign_is_still_eligible_when_requested():
+    material = Material(id='ad', source_type='article', title='Праздничная реклама: как увеличить продажи', topics=['Маркетинг'])
+    assert Engine([material]).recommend('Как запустить праздничную рекламу и увеличить продажи?').items
+
+
+def test_unrelated_optimization_is_not_profit_evidence():
+    material = Material(id='hr', source_type='article', title='Как сократить время найма сотрудников', topics=['Команда'])
+    route = Engine([material]).recommend('Как увеличить прибыль без увеличения рекламного бюджета?')
+    assert not route.items and route.clarification
+
+
+def test_constrained_general_query_does_not_invent_a_marketplace_or_fill_with_definitions():
+    materials = [
+        Material(id='retain', source_type='article', title='Повторные продажи и удержание клиентов', description='Как увеличить прибыль', topics=['Продажи']),
+        Material(id='market', source_type='article', title='Маржинальность на маркетплейсах', topics=['Финансы']),
+        Material(id='term', source_type='glossary', title='Маржинальность', topics=['Финансы']),
+    ]
+    engine = Engine(materials)
+    for baseline in (False, True):
+        route = engine.recommend('Как увеличить прибыль без увеличения рекламного бюджета?', baseline=baseline)
+        assert [item.material.id for item in route.items] == ['retain']
+    from app.recommendation.eligibility import exclusion_reason
+    from app.recommendation.intent import parse_intent
+
+    specialized = parse_intent('Как увеличить прибыль на маркетплейсах без увеличения рекламного бюджета?')
+    assert exclusion_reason(materials[1], specialized, {}) is None

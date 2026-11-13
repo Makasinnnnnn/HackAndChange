@@ -177,6 +177,32 @@ def retrieval_query(query):
     return query + (" " + " ".join(additions) if additions else "")
 
 
+AD_SPEND_CONSTRAINT = re.compile(
+    r"без\s+(?:увеличения|роста|повышения|дополнительных)\s+(?:рекламн\w*\s+бюджет\w*|(?:расход\w*|затрат\w*|бюджет\w*)\s+на\s+реклам\w*)"
+    r"|не\s+увеличивая\s+(?:рекламн\w*\s+бюджет\w*|(?:расход\w*|затрат\w*)\s+на\s+реклам\w*)"
+    r"|с\s+(?:тем\s+же|прежним)\s+рекламн\w*\s+бюджет\w*"
+)
+
+# Evidence comes from the title/description, never a broad catalog topic alone.
+PROFIT_MECHANISMS = {
+    "retention": ("повторн", "удержани", "лояльност"),
+    "conversion": ("конверси", "воронк", "средний чек", "среднего чека", "допродаж"),
+    "margin": ("маржин", "рентабельност", "ценообразован", "наценк"),
+    "costs": ("сократ", "снизи", "оптимизац", "себестоим", "издержк"),
+    "ad_efficiency": ("roas", "romi", "стоимость привлечения", "стоимости привлечения", "эффективность рекламы", "эффективности рекламы"),
+    "organic": ("без рекламного бюджета", "бесплатное продвиж", "органическое продвиж", "сарафан"),
+}
+
+
+def profit_mechanisms(material):
+    text = (material.title + " " + material.description).casefold().replace("ё", "е")
+    matched = {key for key, terms in PROFIT_MECHANISMS.items() if any(term in text for term in terms)}
+    # Cutting/optimizing something unrelated (e.g. hiring time) is not cost evidence.
+    if "costs" in matched and not any(term in text for term in ("расход", "затрат", "себестоим", "издержк")):
+        matched.remove("costs")
+    return matched
+
+
 @dataclass(frozen=True)
 class QueryIntent:
     query: str
@@ -186,10 +212,20 @@ class QueryIntent:
     vague: bool
     opening: bool
     closing: bool
+    constraints: frozenset[str] = frozenset()
 
 
 def parse_intent(query: str, baseline=False) -> QueryIntent:
     query = query.strip()
+    lowered = query.casefold().replace("ё", "е")
+    constrained_profit = bool(AD_SPEND_CONSTRAINT.search(lowered)) and any(
+        term in lowered for term in ("прибыл", "рентабельност", "доход", "продаж", "выручк")
+    )
+    positive_query = query
+    if constrained_profit:
+        positive_query = AD_SPEND_CONSTRAINT.sub("", lowered).strip(" .?!")
+        if not baseline:
+            positive_query += " повторные продажи удержание клиентов маржинальность конверсия снижение затрат"
     topics = frozenset(topics_for(query))
     meaningful = [
         word
@@ -198,12 +234,13 @@ def parse_intent(query: str, baseline=False) -> QueryIntent:
     ]
     return QueryIntent(
         query,
-        query if baseline else retrieval_query(query),
+        positive_query if baseline else retrieval_query(positive_query),
         topics,
         frozenset(sectors_for(query)),
         not query or (not topics and not meaningful),
         "Запуск бизнеса" in topics,
         any(term in query.casefold() for term in ("закры", "ликвид", "прекрат")),
+        frozenset({"fixed_ad_spend"}) if constrained_profit else frozenset(),
     )
 
 

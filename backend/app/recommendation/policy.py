@@ -19,9 +19,10 @@ SEMANTIC_CONFIG = {
     "unknown_floor": 0.84,
     "unknown_word_floor": 0.05,
 }
-PERSONAL_VERSION = "personal-v4"
-BASELINE_VERSION = "topic-baseline-v2"
+PERSONAL_VERSION = "personal-v5"
+BASELINE_VERSION = "topic-baseline-v3"
 MIN_RELEVANCE = 0.075
 GENERAL_LIMIT = 3
+CONSTRAINT_LIMIT = 3
 GENERAL_RELATIVE_FLOOR = 0.75
 DIVERSITY_PENALTY = 0.035

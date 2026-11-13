@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from .models import Profile, Route
 from .recommendation.eligibility import exclusion_reason
-from .recommendation.explanation import recommendation
+from .recommendation.explanation import constraint_evidence, recommendation
 from .recommendation.index import SearchIndex
 from .recommendation.intent import (
     material_topics,
@@ -18,6 +18,7 @@ from .recommendation.intent import (
 )
 from .recommendation.policy import (
     BASELINE_VERSION,
+    CONSTRAINT_LIMIT,
     GENERAL_LIMIT,
     GENERAL_RELATIVE_FLOOR,
     MIN_RELEVANCE,
@@ -171,6 +172,9 @@ class Engine:
                     else "Найдено текстовое совпадение с темой поиска"
                 ]
             )
+            if "fixed_ad_spend" in intent.constraints:
+                constraint_signals, reasons = constraint_evidence(material)
+                signals.update(constraint_signals)
             if not baseline and intent.sectors and not sector_match(material, intent.sectors):
                 reasons.insert(0, "Общий бизнес-материал; совпадение вашей отрасли не подтверждено")
             score = (
@@ -185,6 +189,12 @@ class Engine:
             return response(
                 clarification="Точного материала не нашли. Уточните задачу или выберите более общее направление."
             )
+        if intent.constraints:
+            strongest = max(candidate.score for candidate in candidates)
+            candidates = [
+                candidate for candidate in candidates if candidate.score >= strongest * GENERAL_RELATIVE_FLOOR
+            ]
+            limit = min(limit, CONSTRAINT_LIMIT)
         chosen = select(candidates, limit, baseline)
         general = (
             not baseline
