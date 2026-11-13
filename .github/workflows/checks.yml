@@ -18,6 +18,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: pip install -r backend/requirements.txt
       - run: python scripts/check_public_files.py
+      - run: python scripts/check_version.py
       - run: ruff check backend scripts
       - run: pytest -q
       - run: npm ci --no-audit --no-fund

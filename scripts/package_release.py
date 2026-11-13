@@ -25,6 +25,7 @@ if __name__ == "__main__":
     if target.exists():
         raise SystemExit("Output exists; choose another filename to preserve the prior artifact")
     subprocess.run(["git", "diff", "--exit-code", "HEAD"], cwd=ROOT, check=True, capture_output=True)
+    subprocess.run([sys.executable, "scripts/check_version.py"], cwd=ROOT, check=True)
     subprocess.run([sys.executable, "scripts/check_public_files.py"], cwd=ROOT, check=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "archive", "--format=zip", "--output", str(target), "HEAD"], cwd=ROOT, check=True)
