@@ -145,3 +145,19 @@ def test_unmatched_profile_field_does_not_claim_to_affect_additive_ranking():
     assert route.items
     assert "industry" not in route.active_profile_fields
     assert not any("отраслевая" in reason for reason in route.items[0].reasons)
+
+
+@pytest.mark.parametrize("other_industry", ["Розница", "Производство", "Строительство и недвижимость"])
+def test_medical_query_rejects_different_industry_metadata(other_industry):
+    materials = [Material(id="general", source_type="course", title="Как составить бизнес-план", topics=["Первые шаги"]), Material(id="wrong", source_type="article", title="Бизнес-план магазина одежды с нуля: выбираем нишу", industries=[other_industry])]
+    route = Engine(materials).recommend("медицинский бизнес открыть томск бабки тачки телки", Profile(industry="Услуги"))
+    assert route.items and "wrong" not in {i.material.id for i in route.items}
+    assert route.match_scope == "general"
+    assert any("не подтверждено" in reason for reason in route.items[0].reasons)
+
+
+def test_unlabelled_specialized_startup_subject_is_not_general_fallback():
+    from app.engine import sector_compatibility
+    assert not sector_compatibility(Material(id="a", source_type="article", title="Бизнес-план зоомагазина"), {"medical"})
+    assert sector_compatibility(Material(id="b", source_type="article", title="Как составить бизнес-план: пошаговая инструкция"), {"medical"})
+    assert sector_compatibility(Material(id="c", source_type="article", title="Бизнес-план медицинской клиники"), {"medical"})

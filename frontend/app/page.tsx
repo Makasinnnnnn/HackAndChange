@@ -14,7 +14,7 @@ type Tab = 'route' | 'progress' | 'catalog' | 'jury';
 type Profile = {stage?:string|null; industry?:string|null; experience?:string|null; format?:string|null; urgency?:string|null};
 type Material = {id:string; title:string; description:string; source_type:string; topics:string[]; industries:string[]; access:string; price:number|null; duration:string|null; url:string|null; provenance:string; demo_content?:string|null};
 type Item = {material:Material; reasons:string[]; next_action:string; phase:string; score:number; rank_score:number; signals:Record<string,number>};
-type Route = {route_id:string; query:string; profile:Profile; items:Item[]; clarification:string|null; notice:string|null; elapsed_ms:number; algorithm:string; excluded_count:number; candidate_count:number; active_profile_fields:string[]; catalog_version:string};
+type Route = {match_scope?:'task'|'general';route_id:string; query:string; profile:Profile; items:Item[]; clarification:string|null; notice:string|null; elapsed_ms:number; algorithm:string; excluded_count:number; candidate_count:number; active_profile_fields:string[]; catalog_version:string};
 type Evaluation = {status:string;note:string;metrics?:Record<string,Record<string,Record<string,number>>>|null;judged_profiles?:number};
 type Persona = {id:string; name:string; situation:string; query:string; profile:Profile};
 const catalogPageSize = 12;
@@ -346,7 +346,7 @@ export default function Home() {
 
         {tab==='route'&&!route&&<section className="starting-points"><div className="section-label"><h2>Можно начать с этого</h2></div><div className="example-grid">{examples.map(e=><button className="example-card" key={e.title} disabled={busy||!ready} onClick={()=>recommend(e.query)}><span><strong>{e.title}</strong><small>{e.topic}</small></span><Image className="example-art" src={e.art} alt="" width={128} height={128} unoptimized/><ArrowUpRight size={18} aria-hidden="true"/></button>)}</div></section>}
         {tab==='route'&&route&&<section className="route-results" aria-live="polite"><div className="route-intro">
-          <div className="section-label"><h2>Ваш маршрут{route.items.length>0&&<span className="count-badge">{route.items.length} шагов</span>}</h2><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
+          <div className="section-label"><h2>{route.match_scope==='general'?'Общие материалы по задаче':'Ваш маршрут'}{route.items.length>0&&<span className="count-badge">{route.items.length} {route.match_scope==='general'?'материалов':'шагов'}</span>}</h2><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
           {route.query&&<p className="route-context"><strong>Ваша задача</strong><br/>{route.query}</p>}
           {route.active_profile_fields.length>0&&<p className="small-note">Учитываем только заполненный контекст. Материалы без известных признаков уровня и стадии не получают таких объяснений.</p>}
           </div>{route.clarification&&<div className="empty-state"><CircleHelp size={28}/><h3>Давайте найдём точку старта</h3><p>{route.clarification}</p><div className="empty-actions">{examples.map(e=><button className="secondary" key={e.title} disabled={busy} onClick={()=>recommend(e.query)}>{e.title}</button>)}</div></div>}

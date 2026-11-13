@@ -91,6 +91,7 @@ class Recommendation(BaseModel):
 
 
 class Route(BaseModel):
+    match_scope: Literal["task", "general"] = "task"
     route_id: str
     algorithm: str
     query: str

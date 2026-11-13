@@ -219,3 +219,14 @@ test('unchanged AI answer is reported honestly',async({page})=>{
   await expect(page.locator('.error-banner')).toContainText('не нашёл более точной формулировки');
   await expect(page.getByText('Предложение AI',{exact:true})).toHaveCount(0);
 });
+
+
+test('general fallback is not presented as a specialized route',async({page})=>{
+  await page.route('**/api/recommendations',async route=>{
+    const response=await route.fetch();const result=await response.json();
+    await route.fulfill({json:{...result,match_scope:'general',notice:'В этой подборке нет подтверждённого отраслевого совпадения.'}});
+  });
+  await page.getByRole('button',{name:/Привлечь клиентов/}).click();
+  await expect(page.getByRole('heading',{name:/Общие материалы по задаче/})).toBeVisible();
+  await expect(page.locator('.notice')).toContainText('нет подтверждённого отраслевого совпадения');
+});
