@@ -8,7 +8,7 @@
 
 Исторический смысловой аудит v6 — 120 запросов / 195 карточек: 72 полезные подборки, 28 частичных, 9 пробелов покрытия, 11 ожидаемых уточнений — по оценке основного агента. Это регрессия, не независимая экспертная оценка. Human labels=0. Отчёт: [audit-1.2.md](audit-1.2.md); подробные реальные выдачи только в .private/semantic-audit-120/review.html.
 
-155 pytest с реальной E5, 32 desktop/mobile E2E, Ruff, TypeScript/production Docker и FULL/DEMO smoke прошли. npm audit и pip-audit/OSV (base/semantic) известных уязвимостей не нашли. Проверены настоящие запросы к Qwen; явные ограничения сохраняются. Прогресс хранится отдельно от исходных пользователей.
+161 pytest с реальной E5, 32 desktop/mobile E2E, Ruff, TypeScript/production Docker и FULL/DEMO smoke прошли. npm audit и pip-audit/OSV (base/semantic) известных уязвимостей не нашли. Проверены настоящие запросы к Qwen; явные ограничения сохраняются. Прогресс хранится отдельно от исходных пользователей.
 
 Комплект для ручной отправки: [submission.md](submission.md), README, публичный ZIP, PDF/PPTX output/presentation/alfa-route-1.2.*. Первый слайд содержит ссылку на репозиторий. Старые теги и исходный PR не переписываются; публикация 1.2 добавляет новый тег. Отправка организаторам и публичный сайт не выполнены.
 
@@ -16,4 +16,4 @@
 
 История предыдущих локальных состояний перенесена в status-history-2026-11-13.md. Инструкция алгоритма: [recommendation-pipeline.md](recommendation-pipeline.md).
 
-Чистый запуск публичного RC ZIP (код 13653e4, SHA-256 4efd75a00d93e25236951b860a0b06e106f7695084b1542390076dca2a7cd2d3) проверен на Windows в отдельном проекте hac-release-1-2-rc / новом томе: DEMO 36, health 1.2.0, LLM off / semantic fallback, 8 smoke и persistence после перезапуска DB/API passed. Основной FULL на 3080 также повторно запущен с сохранением прогресса. Новый актуальный human-пул v7: 32 профиля / 155 пар / 0 human labels.
+Чистый запуск публичного RC ZIP (код 13653e4, SHA-256 4efd75a00d93e25236951b860a0b06e106f7695084b1542390076dca2a7cd2d3) проверен на Windows в отдельном проекте hac-release-1-2-rc / новом томе: DEMO 36, health 1.2.0, LLM off / semantic fallback, 8 smoke и persistence после перезапуска DB/API passed. Основной FULL на 3080 также повторно запущен с сохранением прогресса. Новый актуальный human-пул v7: 32 профиля / 51 пара / 0 human labels.

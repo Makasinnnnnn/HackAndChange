@@ -89,6 +89,12 @@ def test_explicit_cashflow_startup_closing_and_franchise_goals_are_not_loss_diag
 @pytest.mark.parametrize(
     ("query", "task"),
     [
+        ("Нужен платёжный календарь", "cash_flow"),
+        ("Хочу управлять финансами компании", "financial_basics"),
+        ("Как проверить идею перед открытием кофейни?", "demand"),
+        ("Как организовать проверку контрагента?", "counterparty"),
+        ("Нужен план рекламы", "promotion"),
+        ("Как проверить прибыльность товара на Ozon?", "profitability"),
         ("Клиентов почти нет. Как привлечь новых?", "acquisition"),
         ("Точка открыта, но никто о нас не знает", "acquisition"),
         ("Люди спрашивают цену и пропадают", "conversion"),
