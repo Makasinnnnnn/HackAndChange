@@ -62,6 +62,7 @@ test('an older recommendation response cannot replace a newer result',async({pag
   const firstResponse=page.waitForResponse(async response=>response.url().endsWith('/api/recommendations')&&(await response.json()).query==='Первый ответ');
   releaseFirst();
   await firstResponse;
+  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
   await expect.poll(()=>requests).toBe(2);
   await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
   await expect(page.locator('.route-context')).toContainText('Последний ответ');
