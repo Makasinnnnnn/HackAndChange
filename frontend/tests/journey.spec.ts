@@ -11,6 +11,62 @@ test.beforeEach(async({page})=>{
   await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
 });
 
+test('changed task, context and feedback mark the previous route until rebuilt',async({page})=>{
+  await page.getByRole('button',{name:/Разобраться с деньгами/}).click();
+  await expect(page.locator('.route-card').first()).toBeVisible();
+  const stale=page.getByRole('status').filter({hasText:'Подборка ещё не обновлена'});
+  await expect(stale).toHaveCount(0);
+  await page.getByLabel('Ваша бизнес-задача').fill('Как привлечь клиентов в кофейню?');
+  await expect(stale).toBeVisible();
+  await expect(page.locator('.route-context')).toContainText('кассового разрыва');
+  await page.getByRole('button',{name:'Перестроить подборку',exact:true}).click();
+  await expect(stale).toHaveCount(0);
+  await expect(page.locator('.route-context')).toContainText('привлечь клиентов');
+  await page.getByRole('button',{name:'Быстро применить',exact:true}).click();
+  await expect(stale).toBeVisible();
+  await page.getByRole('button',{name:'Перестроить подборку',exact:true}).click();
+  await expect(stale).toHaveCount(0);
+  await page.locator('.route-card').first().getByRole('button',{name:'Не подходит',exact:true}).click();
+  await expect(stale).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+});
+
+test('clarification returns focus to the original task without replacing it',async({page})=>{
+  const task=page.getByLabel('Ваша бизнес-задача');
+  await task.fill('помоги');
+  await page.getByRole('button',{name:'Построить маршрут',exact:true}).click();
+  await expect(page.getByText('Давайте найдём точку старта')).toBeVisible();
+  await page.getByRole('button',{name:'Уточнить мою задачу',exact:true}).click();
+  await expect(task).toBeFocused();
+  await expect(task).toHaveValue('помоги');
+  await expect(page.getByText('Или выберите другую стартовую задачу — она заменит текущий текст.')).toBeVisible();
+});
+
+test('an older recommendation response cannot replace a newer result',async({page})=>{
+  let releaseFirst:()=>void=()=>{};
+  const held=new Promise<void>(resolve=>{releaseFirst=resolve;});
+  let requests=0;
+  await page.route('**/api/recommendations',async interception=>{
+    const number=++requests;
+    const response=await interception.fetch();
+    const result=await response.json();
+    if(number===1)await held;
+    await interception.fulfill({json:{...result,query:number===1?'Первый ответ':'Последний ответ'}});
+  });
+  await page.getByLabel('Ваша бизнес-задача').fill('Как избежать кассового разрыва?');
+  const form=page.locator('.task-card form');
+  await form.dispatchEvent('submit');
+  await expect.poll(()=>requests).toBe(1);
+  await form.dispatchEvent('submit');
+  await expect(page.locator('.route-context')).toContainText('Последний ответ');
+  const firstResponse=page.waitForResponse(async response=>response.url().endsWith('/api/recommendations')&&(await response.json()).query==='Первый ответ');
+  releaseFirst();
+  await firstResponse;
+  await expect.poll(()=>requests).toBe(2);
+  await expect(page.getByRole('button',{name:'Построить маршрут',exact:true})).toBeEnabled();
+  await expect(page.locator('.route-context')).toContainText('Последний ответ');
+});
+
 test('task → explanation → material → feedback → persisted progress',async({page})=>{
   await page.getByRole('button',{name:/Привлечь клиентов/}).click();
   const first=page.locator('.route-card').first();

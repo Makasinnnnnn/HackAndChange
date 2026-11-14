@@ -18,6 +18,12 @@ type Route = {match_scope?:'task'|'general';route_id:string; query:string; profi
 type Evaluation = {status:string;note:string;metrics?:Record<string,Record<string,Record<string,number>>>|null;judged_profiles?:number};
 type Persona = {id:string; name:string; situation:string; query:string; profile:Profile};
 const catalogPageSize = 12;
+function profileKey(profile:Profile) {
+  return JSON.stringify([profile.stage,profile.industry,profile.experience,profile.format,profile.urgency].map(value=>value||null));
+}
+function historyKey(history:Record<string,string>) {
+  return JSON.stringify(Object.entries(history).sort(([a],[b])=>a.localeCompare(b)));
+}
 function counted(count:number,forms:[string,string,string]) {
   const last=count%10, hundred=count%100;
   return `${count} ${forms[hundred>=11&&hundred<=14?2:last===1?0:last>=2&&last<=4?1:2]}`;
@@ -47,6 +53,7 @@ export default function Home() {
   const [query,setQuery] = useState('');
   const [profile,setProfile] = useState<Profile>({});
   const [route,setRoute] = useState<Route|null>(null);
+  const [routeHistory,setRouteHistory] = useState('');
   const [comparison,setComparison] = useState<{baseline:Route;personal:Route;note:string}|null>(null);
   const [personas,setPersonas] = useState<Persona[]>([]);
   const [history,setHistory] = useState<Record<string,string>>({});
@@ -72,6 +79,7 @@ export default function Home() {
   const [evaluation,setEvaluation] = useState<Evaluation>({status:'',note:''});
   const queryRef = useRef(query);
   const aiRequest = useRef(0);
+  const routeRequest = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const dialogTitle = useRef<HTMLHeadingElement>(null);
@@ -86,6 +94,7 @@ export default function Home() {
   const restoreMenuFocus = useRef(false);
   const menuHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const learnCount = Object.values(history).filter(v=>v==='completed'||v==='known').length;
+  const routeStale = route!==null&&(route.query.trim()!==query.trim()||profileKey(route.profile)!==profileKey(profile)||routeHistory!==historyKey(history));
 
   useEffect(()=>{
     let active=true;
@@ -194,8 +203,16 @@ export default function Home() {
   function updateQuery(value:string){queryRef.current=value;setQuery(value);setIntent(null);setIntentAnswer('');}
   function patchProfile(key:keyof Profile,value:string){if(busy||!ready)return;setProfile(p=>({...p,[key]:value||null}));setComparison(null);}
   async function recommend(override?:string){
-    const value=override??query;if(override!==undefined)updateQuery(override);setBusy(true);setError('');
-    try{setRoute(await api('/recommendations',{query:value,profile}));setTab('route');}catch(e){setError((e as Error).message);}finally{setBusy(false);}
+    const value=override??query;
+    const request=++routeRequest.current;
+    const submittedHistory=historyKey(history);
+    if(override!==undefined)updateQuery(override);setBusy(true);setError('');
+    try{
+      const result=await api<Route>('/recommendations',{query:value,profile});
+      if(request!==routeRequest.current)return;
+      setRoute(result);setRouteHistory(submittedHistory);setTab('route');
+    }catch(e){if(request===routeRequest.current)setError((e as Error).message);}
+    finally{if(request===routeRequest.current)setBusy(false);}
   }
   async function clarifyTask(){
     const input=query;
@@ -350,10 +367,11 @@ export default function Home() {
 
         {tab==='route'&&!route&&<section className="starting-points"><div className="section-label"><h2>Можно начать с этого</h2></div><div className="example-grid">{examples.map(e=><button className="example-card" key={e.title} disabled={busy||!ready} onClick={()=>recommend(e.query)}><span><strong>{e.title}</strong><small>{e.topic}</small></span><Image className="example-art" src={e.art} alt="" width={128} height={128} unoptimized/><ArrowUpRight size={18} aria-hidden="true"/></button>)}</div></section>}
         {tab==='route'&&route&&<section className="route-results" aria-live="polite"><div className="route-intro">
+          {routeStale&&<div className="notice route-stale" role="status"><div><strong>Подборка ещё не обновлена</strong><p>Задача, контекст или отметки изменились. Ниже сохранён предыдущий результат.</p></div><button className="secondary" disabled={busy||!ready} onClick={()=>recommend()}>Перестроить подборку <ArrowRight size={17}/></button></div>}
           <div className="section-label"><h2>{route.match_scope==='general'?'Общие материалы по задаче':'Ваш маршрут'}{route.items.length>0&&<span className="count-badge">{counted(route.items.length,route.match_scope==='general'?['материал','материала','материалов']:['шаг','шага','шагов'])}</span>}</h2><button className="text-button muted" onClick={()=>navigate('jury')}>Почему именно эти материалы? <ArrowUpRight size={15}/></button></div>
           {route.query&&<p className="route-context"><strong>Ваша задача</strong><br/>{route.query}</p>}
           {route.active_profile_fields.length>0&&<p className="small-note">Учитываем только заполненный контекст. Материалы без известных признаков уровня и стадии не получают таких объяснений.</p>}
-          </div>{route.clarification&&<div className="empty-state"><CircleHelp size={28}/><h3>Давайте найдём точку старта</h3><p>{route.clarification}</p><div className="empty-actions">{examples.map(e=><button className="secondary" key={e.title} disabled={busy} onClick={()=>recommend(e.query)}>{e.title}</button>)}</div></div>}
+          </div>{route.clarification&&<div className="empty-state"><CircleHelp size={28}/><h3>Давайте найдём точку старта</h3><p>{route.clarification}</p><button className="secondary" disabled={busy} onClick={()=>{textarea.current?.focus();textarea.current?.scrollIntoView({block:'center',behavior:'smooth'});}}>Уточнить мою задачу</button><p className="small-note">Или выберите другую стартовую задачу — она заменит текущий текст.</p><div className="empty-actions">{examples.map(e=><button className="secondary" key={e.title} disabled={busy} onClick={()=>recommend(e.query)}>{e.title}</button>)}</div></div>}
           {route.notice&&<div className="notice">{route.notice}</div>}
           <div className="route-layout"><div>{route.items.map((item,i)=>routeCard(item,i,route.items.length))}</div>{route.items.length>0&&<aside className="route-summary">
             <h3>Ваш прогресс</h3>
