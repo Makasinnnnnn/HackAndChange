@@ -1,5 +1,7 @@
 # Карта документации
 
+- [Общие инструкции агентам](../AGENTS.md), [работа в команде](TEAM.md), [задачи дополнительному помощнику](assistant-tasks.md)
+
 - [Запуск и назначение](../README.md)
 - [Состояние](STATUS.md), [план](plan.md), [журнал](worklog.md)
 - [Требования](case-requirements.md), [уточнения организаторов](organizer-clarifications.md)

@@ -17,3 +17,6 @@
 История предыдущих локальных состояний перенесена в status-history-2026-11-13.md. Инструкция алгоритма: [recommendation-pipeline.md](recommendation-pipeline.md).
 
 Чистый запуск публичного RC ZIP (код 13653e4, SHA-256 4efd75a00d93e25236951b860a0b06e106f7695084b1542390076dca2a7cd2d3) проверен на Windows в отдельном проекте hac-release-1-2-rc / новом томе: DEMO 36, health 1.2.0, LLM off / semantic fallback, 8 smoke и persistence после перезапуска DB/API passed. Основной FULL на 3080 также повторно запущен с сохранением прогресса. Новый актуальный human-пул v7: 32 профиля / 51 пара / 0 human labels.
+
+
+15 ноября: опубликован общий комплект инструкций для команды — корневой и вложенные AGENTS.md, входные CLAUDE/GEMINI/Copilot, docs/TEAM.md. Участнику достаточно DEMO без личных файлов владельца; runtime остаётся1.2.3. Текущие правила отделены от исторических записей.
