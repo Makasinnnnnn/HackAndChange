@@ -10,7 +10,12 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def cases():
+def cases(suite="original"):
+    if suite == "natural":
+        data = json.loads((ROOT / "scripts/audit_natural_queries.json").read_text(encoding="utf-8"))
+        result = [{**case, "split": "regression"} for case in data["cases"]]
+        assert len(result) == 150 and len({case["query"] for case in result}) == 150
+        return result
     data = json.loads((ROOT / "scripts/audit_queries.json").read_text(encoding="utf-8"))
     result = []
     for group_index, group in enumerate(data["groups"]):
@@ -29,7 +34,9 @@ def cases():
     return result
 
 
-def capture(base, output, split="all"):
+def capture(base, output, split="all", suite="original", expect_algorithm=None):
+    if suite == "natural" and split != "all":
+        raise ValueError("Natural suite is a regression set, not an independent dev/test split")
     output = output.resolve()
     if not output.is_relative_to((ROOT / ".private").resolve()):
         raise ValueError("Catalog-derived audit evidence must stay in .private")
@@ -48,7 +55,7 @@ def capture(base, output, split="all"):
         else:
             raise RuntimeError("API did not become ready in 45 attempts")
         ready.raise_for_status()
-        for case in cases():
+        for case in cases(suite):
             if split != "all" and case["split"] != split:
                 continue
             started = time.perf_counter()
@@ -56,6 +63,8 @@ def capture(base, output, split="all"):
             response = client.post("/api/recommendations", json={"query": case["query"], "profile": {}})
             response.raise_for_status()
             route = response.json()
+            if expect_algorithm and route["algorithm"] != expect_algorithm:
+                raise ValueError("Unexpected live algorithm: wait for the intended server version")
             assert route["catalog_version"] == ready.json()["catalog_version"]
             assert len({i["material"]["id"] for i in route["items"]}) == len(route["items"])
             assert all(item["reasons"] and item["next_action"] for item in route["items"])
@@ -75,5 +84,11 @@ if __name__ == "__main__":
     parser.add_argument("--base", default="http://127.0.0.1:3080")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--split", choices=["all", "development", "validation"], default="all")
+    parser.add_argument("--suite", choices=["original", "natural"], default="original")
+    parser.add_argument("--expect-algorithm")
     args = parser.parse_args()
-    print(json.dumps(capture(args.base, args.output, args.split), ensure_ascii=False))
+    print(
+        json.dumps(
+            capture(args.base, args.output, args.split, args.suite, args.expect_algorithm), ensure_ascii=False
+        )
+    )

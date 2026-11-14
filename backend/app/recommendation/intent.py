@@ -325,6 +325,8 @@ def positive_request(query):
         text = re.sub(r"без\s+(?:найма|увеличения штата)(?:\s+дополнительных)?(?:\s+сотрудников)?", "", text)
     if re.search(r"сохранить\s+(?:сотрудник|команд|персонал)", text):
         constraints.add("preserve_staff")
+    if re.search(r"без\s+(?:увольнени|сокращени\w* штат)", text):
+        constraints.add("preserve_staff")
     if re.search(r"перейти.{0,40}на усн", text):
         constraints.add("target_usn")
     # The alternative after 'а не' is not the requested task or format.
@@ -352,6 +354,23 @@ def parse_intent(query: str, baseline=False) -> QueryIntent:
             positive_query += " повторные продажи удержание клиентов маржинальность конверсия снижение затрат"
         constraints.add("fixed_ad_spend")
     tasks = query_tasks(positive_query if not constrained_profit else AD_SPEND_CONSTRAINT.sub("", lowered))
+    if "profitability" in tasks and re.search(
+        r"(?:рассчит|посчит|расчет|формул)\w*.{0,20}(?:марж|рентабельност)", positive_query
+    ):
+        constraints.add("financial_calculation")
+    if sectors_for(positive_query) and not tasks and re.search(r"\bзакрыть\b", positive_query):
+        tasks = tasks | {"closing"}
+    # A symptom of an operating business is not a request for start-up capital.
+    # Only infer a diagnostic goal when no more specific action was requested.
+    if not tasks and re.search(
+        r"не\s+(?:принос\w*|дает|дает\w*)\s+(?:мне\s+)?(?:денег|доход\w*|прибыл\w*)"
+        r"|не\s+зарабатыва\w*|не\s+окупа\w*|(?:работа\w*|работаем|работаю)\s+в\s+минус"
+        r"|\bубыточ\w*|\bубытки\b|(?:нет|мало)\s+прибыл\w*|прибыл\w*\s+(?:нет|падает|снизилась)",
+        positive_query,
+    ):
+        tasks = frozenset({"profitability"})
+        constraints.add("profit_diagnosis")
+        positive_query += " рентабельность маржинальность экономика действующего бизнеса"
     if "откры" in positive_query and sectors_for(positive_query) and "сколько денег" in positive_query:
         tasks = tasks | {"business_plan"}
     if re.search(
@@ -392,17 +411,36 @@ def parse_intent(query: str, baseline=False) -> QueryIntent:
         and not tasks
         and not sectors_for(query)
     )
+    vague_wish = not tasks and bool(
+        re.search(r"(?:все|всё)\s+(?:стало|было)\s+хорошо|помоги\s*$", positive_query)
+    )
     meaningful = [
         word
         for word in re.findall(r"[а-яёa-z0-9]+", query.casefold())
         if word not in STOP_WORDS and (len(word) > 2 or word in {"ип", "ооо"})
     ]
+    clarification = (
+        "Какой договор нужен: поставки, услуг, аренды или трудовой?" if tasks == {"contract"} else None
+    )
+    if (
+        not tasks
+        and not constraints
+        and not requested_format
+        and "Запуск бизнеса" not in topics
+        and (topics or sectors_for(positive_query))
+        and not re.search(r"что такое|определение|термин", lowered)
+    ):
+        clarification = (
+            "Пока определена только общая тема, а конкретная задача не ясна. "
+            "Что нужно: привлечь клиентов, проверить рентабельность, "
+            "спланировать платежи или управлять командой?"
+        )
     return QueryIntent(
         query,
         positive_query if baseline else retrieval_query(positive_query),
         topics,
         frozenset(sectors_for(positive_query)),
-        not query or (not topics and not meaningful) or earning_only,
+        not query or (not topics and not meaningful) or earning_only or vague_wish,
         "Запуск бизнеса" in topics and "closing" not in tasks,
         "closing" in tasks,
         frozenset(constraints),
@@ -411,7 +449,7 @@ def parse_intent(query: str, baseline=False) -> QueryIntent:
         excluded_formats,
         entity,
         definition,
-        "Какой договор нужен: поставки, услуг, аренды или трудовой?" if tasks == {"contract"} else None,
+        clarification,
         platforms_for(positive_query),
         tuple(key for key, pattern in TAX_SUBJECTS.items() if re.search(pattern, positive_query))
         if re.search(r"отлич|сравн|совмещ", positive_query)

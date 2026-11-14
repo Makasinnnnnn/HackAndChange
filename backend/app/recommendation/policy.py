@@ -19,8 +19,8 @@ SEMANTIC_CONFIG = {
     "unknown_floor": 0.84,
     "unknown_word_floor": 0.05,
 }
-PERSONAL_VERSION = "personal-v6"
-BASELINE_VERSION = "topic-baseline-v4"
+PERSONAL_VERSION = "personal-v7"
+BASELINE_VERSION = "topic-baseline-v5"
 TASK_TITLE_BONUS = 0.24
 TASK_DESCRIPTION_BONUS = 0.10
 TASK_COVERAGE_BONUS = 0.06

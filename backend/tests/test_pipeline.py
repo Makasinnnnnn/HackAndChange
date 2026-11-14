@@ -6,6 +6,225 @@ from app.engine import Engine
 from app.models import Material, Profile
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Кофе",
+        "Кофейня не возвращает вложения",
+        "Салон красоты: дела плохи",
+        "Мой магазин совсем загибается",
+    ],
+)
+def test_unrecognized_goal_cannot_fall_back_to_an_industry_word(query):
+    material = Material(
+        id="noise", source_type="article", title="Франшиза кофейни", description="Финансы и маркетинг"
+    )
+    route = Engine([material]).recommend(query)
+    assert not route.items and route.clarification
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Кофейня не приносит денег",
+        "Салон красоты не окупается",
+        "Магазин работает в минус",
+        "Убыточная клиника",
+        "Выручка есть, а прибыли нет",
+        "Бизнес не даёт дохода",
+    ],
+)
+@pytest.mark.parametrize("baseline", [False, True])
+def test_operating_profit_symptoms_do_not_become_startup_or_cashflow(query, baseline):
+    materials = [
+        Material(
+            id="economics",
+            source_type="article",
+            title="Рентабельность: анализ бизнеса",
+            description="Как измерить доходность и найти причины низкой прибыли",
+        ),
+        Material(
+            id="startup",
+            source_type="course",
+            title="Где взять деньги на открытие бизнеса",
+            description="Рассчитать прибыль, привлечь капитал и запустить бизнес",
+        ),
+        Material(
+            id="franchise",
+            source_type="article",
+            title="Франшиза кофейни",
+            description="Рентабельность и выбор франшизы",
+        ),
+        Material(
+            id="cash",
+            source_type="article",
+            title="Прибыль есть, а денег нет: cash flow",
+            description="Маржинальность и денежные потоки",
+        ),
+        Material(
+            id="tax",
+            source_type="article",
+            title="Налог на прибыль",
+            description="Как рассчитать прибыль для налоговой декларации",
+        ),
+    ]
+    route = Engine(materials).recommend(query, baseline=baseline)
+    assert [item.material.id for item in route.items] == ["economics"]
+    assert any("рентабельност" in reason for reason in route.items[0].reasons)
+    assert "разные задачи" in route.notice
+
+
+def test_explicit_cashflow_startup_closing_and_franchise_goals_are_not_loss_diagnosis():
+    from app.recommendation.intent import parse_intent
+
+    for query in [
+        "Прибыль есть, а денег нет: нужен cash flow",
+        "Хочу открыть кофейню, где взять денег?",
+        "Убыточную кофейню хочу закрыть",
+        "Хочу купить франшизу и проверить рентабельность",
+    ]:
+        assert "profit_diagnosis" not in parse_intent(query).constraints
+
+
+@pytest.mark.parametrize(
+    ("query", "task"),
+    [
+        ("Клиентов почти нет. Как привлечь новых?", "acquisition"),
+        ("Точка открыта, но никто о нас не знает", "acquisition"),
+        ("Люди спрашивают цену и пропадают", "conversion"),
+        ("Реклама съедает деньги. Как проверить её эффективность?", "ad_metrics"),
+        ("Завтра нечем платить аренду", "cash_flow"),
+        ("Как спланировать платежи?", "cash_flow"),
+        ("Нужно выйти в ноль", "breakeven"),
+        ("Проверить, нужен ли людям мой продукт", "demand"),
+        ("Конкурент забирает клиентов. Как его изучить?", "competitors"),
+        ("Новые сотрудники долго входят в работу", "onboarding"),
+        ("Где взять стартовые деньги?", "funding"),
+        ("Как рассчитать маржу?", "profitability"),
+    ],
+)
+def test_colloquial_symptom_resolves_to_business_operation(query, task):
+    from app.recommendation.intent import parse_intent
+
+    assert task in parse_intent(query).tasks
+
+
+def test_staff_preservation_and_sector_only_vague_request():
+    from app.recommendation.intent import parse_intent
+
+    assert "preserve_staff" in parse_intent("Сократить затраты без увольнений").constraints
+    assert parse_intent("Мой бизнес — кофейня. Хочу, чтобы всё стало хорошо. Помоги.").vague
+
+
+@pytest.mark.parametrize(
+    ("query", "bad_title", "bad_description", "good_title", "good_description"),
+    [
+        (
+            "Бизнес-план интернет-магазина",
+            "Бизнес-план магазина одежды",
+            "Как продавать одежду",
+            "Бизнес-план: инструкция",
+            "Как составить план",
+        ),
+        (
+            "Шаблон договора аренды помещения",
+            "Договор аренды земельного участка",
+            "Для аренды земли",
+            "Договор аренды помещения",
+            "Образец договора аренды",
+        ),
+        (
+            "Шаблон договора аренды помещения",
+            "Уведомление о расторжении договора аренды помещения",
+            "Прекращение аренды",
+            "Договор аренды помещения",
+            "Образец договора аренды",
+        ),
+        (
+            "Рассчитать маржу",
+            "Продвижение без скидок",
+            "Как привлекать клиентов и сохранить маржинальность",
+            "Маржинальность бизнеса",
+            "Как посчитать маржу",
+        ),
+        (
+            "Делегировать задачи сотрудникам",
+            "Первый сотрудник: найм",
+            "Какие задачи делегировать",
+            "Управление командой",
+            "Когда руководителю делегировать задачи сотрудникам",
+        ),
+        (
+            "Делегировать задачи сотрудникам",
+            "Искусственный интеллект в бизнесе",
+            "Что делегировать нейросетям",
+            "Управление командой",
+            "Когда руководителю делегировать задачи сотрудникам",
+        ),
+        (
+            "Проверить спрос на продукт",
+            "Какие товары востребованы в Китае",
+            "Спрос на китайских маркетплейсах",
+            "Как проверить спрос",
+            "Интервью с покупателями перед запуском",
+        ),
+        (
+            "Рассчитать маржу",
+            "Нераспределённая прибыль",
+            "Как рассчитать прибыль",
+            "Маржинальность бизнеса",
+            "Как посчитать маржу",
+        ),
+        (
+            "Шаблон договора аренды помещения",
+            "Договор субаренды помещения",
+            "Условия субаренды",
+            "Договор аренды помещения",
+            "Образец договора аренды",
+        ),
+        (
+            "Шаблон договора аренды помещения",
+            "Гарантийное письмо о заключении договора аренды",
+            "Условия аренды",
+            "Договор аренды помещения",
+            "Образец договора аренды",
+        ),
+    ],
+)
+def test_operation_direction_excludes_adjacent_but_different_materials(
+    query, bad_title, bad_description, good_title, good_description
+):
+    materials = [
+        Material(
+            id="wrong",
+            source_type="document" if "Шаблон" in query else "article",
+            title=bad_title,
+            description=bad_description,
+        ),
+        Material(
+            id="right",
+            source_type="document" if "Шаблон" in query else "article",
+            title=good_title,
+            description=good_description,
+        ),
+    ]
+    route = Engine(materials).recommend(query)
+    assert [i.material.id for i in route.items] == ["right"]
+
+
+def test_capital_calculation_is_not_a_financing_request():
+    from app.recommendation.intent import parse_intent
+
+    intent = parse_intent("Как посчитать необходимый стартовый капитал?")
+    assert "business_plan" in intent.tasks and "funding" not in intent.tasks
+
+
+def test_cyrillic_source_word_with_latin_lookalike_keeps_registration_evidence():
+    from app.recommendation.tasks import task_matches
+
+    assert "registration" in task_matches("Форма регистрaции ИП")
+
+
 class SectorDistractorEncoder:
     def encode(self, documents, query=False):
         if query:

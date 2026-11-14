@@ -46,11 +46,16 @@ TASKS = {
         r"(?:откры|запус|нача)\w*.{0,20}(?:бизнес|собственное дело)|первые шаги в бизнес|бизнес[ -]план|бизнес с нуля",
     ),
     "franchise": ("выбор и проверка франшизы", r"франшиз|франчайз|коммерческ\w* концесси"),
+    "funding": (
+        "источники финансирования",
+        r"(?:где|как)\s+(?:взять|найти|привлечь).{0,25}(?:деньги|денег|финансирован)"
+        r"|привлечени\w* инвестиц|источник\w* финансирован|стартов\w* капитал",
+    ),
     "cash_flow": (
         "денежный поток и кассовый разрыв",
         r"кассов\w* разрыв|cash.?flow|движени\w* денежн|прибыл\w* есть.{0,8}а денег нет|выручк.{0,35}денег.{0,20}счет|прибыл.{0,25}выручк.{0,20}денег",
     ),
-    "breakeven": ("точка безубыточности", r"безубыточ"),
+    "breakeven": ("точка безубыточности", r"безубыточ|выйти в н[оу]ль|выход.{0,8}в н[оу]ль"),
     "costing": (
         "себестоимость и цена",
         r"себестоим|ценообразован|наценк|(?:повыс|повыш|установ|поднят)\w* цен",
@@ -65,7 +70,11 @@ TASKS = {
         "снижение расходов",
         r"(?:сократ|снизи|снижен|оптимизац)\w* (?:.{0,25})?(?:расход|затрат|издерж)|ниже затрат",
     ),
-    "profitability": ("маржа и рентабельность", r"маржин|рентабельност|фудкост|экономик\w* ресторан"),
+    "profitability": (
+        "маржа и рентабельность",
+        r"маржин|\bмарж[аыуи]\b|рентабельност|фудкост|экономик\w* ресторан|юнит[ -]экономик"
+        r"|(?:рассчит|посчит|расчет)\w*.{0,15}(?:чист\w* |операционн\w* )?прибыл",
+    ),
     "receivables": ("дебиторская задолженность", r"дебитор|платят с задержк|отсрочк\w* платеж"),
     "management_accounts": ("управленческий учёт", r"управленческ\w* учет"),
     "tax_regime": (
@@ -129,7 +138,7 @@ TASKS = {
     ),
     "retention": (
         "повторные продажи и удержание",
-        r"повторн\w* (?:продаж|покуп)|удерж\w* клиент|верну\w* клиент|клиент.{0,35}не возвращ|постоянн\w* (?:клиент|покуп)|программ\w* лояльност",
+        r"повторн\w* (?:продаж|покуп)|удерж\w* клиент|верну\w* (?:стар\w* |прежн\w* )?клиент|клиент.{0,35}не возвращ|постоянн\w* (?:клиент|покуп)|программ\w* лояльност",
     ),
     "conversion": ("конверсия", r"конверси|посетител.{0,25}покупок мало|посетител.{0,25}не покуп"),
     "average_check": ("средний чек", r"средн\w* чек|допродаж|кросс[ -]?продаж"),
@@ -173,7 +182,16 @@ TASKS = {
 
 
 def text_key(text):
-    return text.casefold().replace("ё", "е")
+    text = text.casefold().replace("ё", "е")
+    # Normalize Latin lookalikes inside Cyrillic words, preserving English terms.
+    lookalikes = str.maketrans("aceopxy", "асеорху")
+    return re.sub(
+        r"[a-zа-я]+",
+        lambda match: (
+            match.group().translate(lookalikes) if re.search(r"[а-я]", match.group()) else match.group()
+        ),
+        text,
+    )
 
 
 @lru_cache(maxsize=16384)
@@ -184,6 +202,19 @@ def task_matches(text):
 
 def query_tasks(text):
     found = set(task_matches(text))
+    # User symptoms have different wording from educational material titles.
+    # Keep this vocabulary separate from source evidence patterns.
+    symptoms = {
+        "acquisition": r"клиентов\s+(?:почти\s+)?нет|никто.{0,15}(?:нас|бизнес).{0,15}не знает|привлечь новых",
+        "conversion": r"(?:спрашива\w*|узна\w*).{0,12}цен.{0,20}пропада|до покупки не доход",
+        "ad_metrics": r"реклам.{0,80}эффективност|эффективност.{0,20}реклам",
+        "cash_flow": r"нечем платить|спланирова\w* платеж|планирова\w* платеж",
+        "demand": r"провери\w*.{0,25}нужен ли.{0,25}продукт",
+        "competitors": r"конкурент.{0,50}(?:изучить|изучать)|изучить.{0,25}конкурент",
+        "onboarding": r"новые сотрудник.{0,30}входят в работу|новичк.{0,20}(?:ошиба|обуч)",
+        "funding": r"(?:где|как).{0,12}(?:взять|найти|привлечь).{0,25}(?:деньги|денег|финансирован)|стартов\w* деньг",
+    }
+    found.update(key for key, pattern in symptoms.items() if re.search(pattern, text_key(text)))
     # Specific operations override ambiguous words from their context.
     if found - {"contract"}:
         found.discard("contract")
@@ -195,6 +226,14 @@ def query_tasks(text):
         found.discard("promotion")
     if "referrals" in found:
         found -= {"organic", "acquisition"}
+    if "funding" in found:
+        if re.search(r"посчит|рассчит|сколько|необходим", text_key(text)) and not re.search(
+            r"где|взять|найти|привлечь|источник", text_key(text)
+        ):
+            found.discard("funding")
+            found.add("business_plan")
+        else:
+            found.discard("launch")
     if "payments" in found:
         found.discard("self_employed")
     if "demand_forecast" in found:

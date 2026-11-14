@@ -13,7 +13,7 @@ from .intent import (
     sectors_for,
     topics_for,
 )
-from .tasks import material_tasks, task_evidence, text_key
+from .tasks import material_tasks, task_evidence, task_matches, text_key
 
 
 def exclusion_reason(material, intent, feedback, baseline=False):
@@ -23,13 +23,75 @@ def exclusion_reason(material, intent, feedback, baseline=False):
         return "sector"
     title = text_key(material.title)
     text = text_key(material.title + " " + material.description)
+    if "business_plan" in intent.tasks:
+        subject = re.search(r"магазин\w*\s+(одежд|обув|цвет|продукт)", title)
+        if subject and subject.group(1) not in text_key(intent.query):
+            return "unrequested_retail_niche"
+    if "financial_calculation" in intent.constraints and not (
+        "profitability" in task_matches(material.title)
+        or re.search(r"экономик|финансов|показател", title)
+        or re.search(r"(?:рассчит|посчит|расчет|формул)\w*.{0,20}(?:марж|рентабельност)", text)
+    ):
+        return "incidental_profitability_mention"
+    if "lease" in intent.tasks and intent.requested_format == "document":
+        for subtype in ("субаренд", "гарантийн"):
+            if subtype in title and subtype not in text_key(intent.query):
+                return "different_lease_document"
+        if "помещени" in text_key(intent.query) and "помещени" not in title:
+            return "different_lease_object"
+        if "договор" in text_key(intent.query) and re.search(
+            r"уведомлен|письм|расторжен|акт\b|дополнительн\w* соглашен", title
+        ):
+            return "different_lease_action"
     if (
         intent.tasks
-        and "самозанят" in title
+        and material.source_type == "document"
+        and not intent.requested_format
+        and not (intent.tasks & material_tasks(material) & task_matches(material.title))
+    ):
+        return "incidental_document_mention"
+    if (
+        "delegation" in intent.tasks
+        and "recruitment" not in intent.tasks
+        and re.search(r"найм|первый сотрудник", title)
+    ):
+        return "hiring_instead_of_delegation"
+    if (
+        "delegation" in intent.tasks
+        and not re.search(r"нейросет|\bии\b|аутсорс|подрядчик", text_key(intent.query))
+        and not re.search(r"сотрудник|команд|руковод", text)
+    ):
+        return "delegation_without_team_context"
+    if (
+        "profitability" in intent.tasks
+        and not intent.tasks & {"tax_payment", "tax_regime"}
+        and re.search(r"налог\w* на прибыл|декларац|курсов\w* разниц|нераспределенн\w* прибыл", title)
+    ):
+        return "profit_distribution_instead_of_profitability"
+    if (
+        "demand" in intent.tasks
+        and re.search(r"(?:китай|китае|китайск|экспорт|импорт|тамож)", text)
+        and not re.search(r"(?:китай|китае|китайск|экспорт|импорт|тамож)", text_key(intent.query))
+    ):
+        return "foreign_trade_instead_of_validation"
+    if "profit_diagnosis" in intent.constraints and (
+        material_tasks(material) & {"launch", "franchise", "cash_flow"}
+        or re.search(
+            r"(?:где|как)\s+(?:взять|найти|привлечь).{0,25}(?:деньги|денег|инвестиц)|стартов\w* капитал",
+            title,
+        )
+        or re.search(r"налог\w* на прибыл|декларац|курсов\w* разниц|нераспределенн\w* прибыл", title)
+    ):
+        return "different_financial_goal"
+    if (
+        intent.tasks
+        and re.search(r"самозанят|\bнпд\b", title)
         and "самозанят" not in intent.query.casefold()
         and "нпд" not in intent.query.casefold()
     ):
         return "unrequested_taxpayer_status"
+    if "closing" in intent.tasks and re.search(r"\bусн\b", title) and "усн" not in text_key(intent.query):
+        return "unrequested_tax_regime_closing"
     if intent.tasks & {"tax_reporting", "tax_overdue", "tax_payment", "vat", "tax_regime"}:
         years = {int(year) for year in re.findall(r"\b20\d{2}\b", title)}
         requested_years = {int(year) for year in re.findall(r"\b20\d{2}\b", intent.query)}

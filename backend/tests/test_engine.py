@@ -112,9 +112,13 @@ def test_catalog_dedup_and_publication_filter(tmp_path):
 
 
 @pytest.mark.parametrize("query", ["франшиза", "кофе"])
-def test_single_informative_word_is_searched(query):
+def test_short_input_searches_a_task_or_asks_for_one(query):
     material = Material(id="short", source_type="course", title="Франшиза кофейни", description="Как выбрать франшизу и открыть кофейню")
-    assert Engine([material]).recommend(query).items
+    route = Engine([material]).recommend(query)
+    if query == "кофе":
+        assert not route.items and route.clarification
+    else:
+        assert route.items
 
 
 def test_real_source_topic_aliases_and_bounded_personalization():

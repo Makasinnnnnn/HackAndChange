@@ -246,4 +246,10 @@ class Engine:
                 + "."
             )
             notice = (notice + " " if notice else "") + missing
+        if "profit_diagnosis" in intent.constraints:
+            notice = (notice + " " if notice else "") + (
+                "Начните с проверки рентабельности действующего бизнеса. "
+                "Из запроса пока неясно, что происходит: мало продаж, высокая себестоимость "
+                "или деньги не поступают вовремя. Это разные задачи; уточните ситуацию для следующего шага."
+            )
         return response(items=items, notice=notice, count=count, general=general)
