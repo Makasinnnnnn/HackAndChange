@@ -54,3 +54,14 @@ Thumbs.db
 *.bak
 .vscode/
 .idea/
+
+# Case materials — никогда не коммитить (ограничение №1 кейса).
+# Файлы лежат вне репо, но страховка на случай случайного копирования внутрь.
+Альфа-Банк_кейс*.pdf
+otchet_llm*.md
+llm_recommendations_alfa*.md
+
+# Модели и кэш — на случай нестандартных файлов, не покрытых *.onnx/*.bin/*.safetensors
+models/
+.cache/
+audit/blind_eval_report.md
