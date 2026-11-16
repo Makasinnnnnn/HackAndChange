@@ -2,7 +2,9 @@
 
 # Альфа-Маршрут
 
-> **v1.2.3 — конкурсный прототип Hack&Change 2026, трек 1.** Персональный маршрут обучения для предпринимателя: задача → материалы → объяснение → следующий шаг.
+**Жюри: [полная инструкция запуска, E5 и Qwen](START_HERE_JURY.md).** Начните с DEMO одной командой; FULL и модели подключаются отдельными шагами.
+
+> **v1.2.4 — конкурсный прототип Hack&Change 2026, трек 1.** Персональный маршрут обучения для предпринимателя: задача → материалы → объяснение → следующий шаг.
 
 [![checks](https://github.com/Makasinnnnnn/HackAndChange/actions/workflows/checks.yml/badge.svg)](https://github.com/Makasinnnnnn/HackAndChange/actions/workflows/checks.yml)
 
