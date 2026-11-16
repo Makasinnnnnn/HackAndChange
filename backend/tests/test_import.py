@@ -16,7 +16,7 @@ def test_normalization_removes_active_html_and_preserves_text():
 
 def test_unknown_routes_are_not_fabricated(monkeypatch, tmp_path):
     monkeypatch.setattr(importer, "ROOT", tmp_path)
-    assert importer.source_url("document-slug", "document") is None
+    assert importer.source_url("unknown-slug", "unknown") is None
     assert importer.source_url("javascript:alert(1)", "article") is None
     assert importer.source_url("//evil.test/path", "article") is None
     assert (
@@ -47,3 +47,19 @@ def test_source_audience_labels_are_not_industries():
     assert importer.normalize_audience(["Без опыта", "Услуги", "💥 NEW"]) == (["Услуги"], "beginner")
     assert importer.normalize_audience(["С опытом", "Без опыта"]) == ([], None)
     assert importer.normalize_audience(["HoReСa", "HoReCa"]) == (["HoReCa"], None)
+
+
+def test_all_catalog_routes_use_confirmed_platform_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(importer, "ROOT", tmp_path)
+    for kind, path in importer.CONFIRMED_PATHS.items():
+        assert importer.source_url("test-material", kind) == f"https://kurs.alfabank.ru/{path}/test-material/"
+
+
+def test_source_links_cannot_escape_platform(monkeypatch, tmp_path):
+    import json
+    monkeypatch.setattr(importer, "ROOT", tmp_path)
+    (tmp_path / ".private").mkdir()
+    (tmp_path / ".private/source-links.json").write_text(json.dumps({"safe-slug": "https://evil.test/"}))
+    assert importer.source_url("safe-slug", "article") == "https://kurs.alfabank.ru/articles/safe-slug/"
+    for url in ["https://evil.test/a", "https://kurs.alfabank.ru.evil.test/a", "https://user@kurs.alfabank.ru/a", "https://kurs.alfabank.ru:999/a", "null", "undefined"]:
+        assert importer.source_url(url, "article") is None

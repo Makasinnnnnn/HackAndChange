@@ -3,6 +3,7 @@
 Does not output or save article bodies and never touches paid lessons or user tables.
 """
 
+import argparse
 import json
 import subprocess
 from collections import defaultdict
@@ -11,7 +12,9 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
-container = "hac-audit-20261112"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--container", default="hac-audit-20261112")
+container = parser.parse_args().container
 labels = json.loads(
     subprocess.run(
         ["docker", "inspect", "--format", "{{json .Config.Labels}}", container],
@@ -23,10 +26,15 @@ if labels.get("project") != "hackandchange" or labels.get("purpose") != "private
     raise SystemExit("Dedicated audit container required")
 catalog_path = ROOT / ".private/catalog.json"
 free_documents = []
+free_articles = []
 if catalog_path.is_file():
     for item in json.loads(catalog_path.read_text(encoding="utf-8")):
-        if item["source_type"] == "document" and item["access"] == "free":
-            free_documents.append(str(UUID(item["id"].split(":", 1)[1])))
+        if item["access"] == "free":
+            if item["source_type"] == "document":
+                free_documents.append(str(UUID(item["id"].split(":", 1)[1])))
+            elif item["source_type"] == "article":
+                free_articles.append(str(UUID(item["id"].split(":", 1)[1])))
+article_ids = ",".join("'" + value + "'" for value in free_articles) or "NULL"
 document_ids = ",".join("'" + value + "'" for value in free_documents)
 document_union = (
     ' UNION ALL SELECT e."HtmlContent" FROM "DocumentEmbedItems" e WHERE e."DocumentId" IN (' + document_ids + ')'
@@ -36,7 +44,7 @@ sql = """BEGIN READ ONLY; SET LOCAL statement_timeout='30s';
 SELECT coalesce(json_agg(DISTINCT u.match[1]),'[]') FROM (
 SELECT e."HtmlContent" FROM "ArticleEmbedItems" e JOIN "Articles" a ON a."Id"=e."ArticleId"
 JOIN "Statuses" s ON s."Id"=a."StatusId"
-WHERE a."IsPublic" AND NOT a."IsClosed" AND NOT a."IsDeleted" AND s."Title"='Опубликовано'
+WHERE a."Id" IN (""" + article_ids + """) AND NOT a."IsClosed" AND NOT a."IsDeleted" AND s."Title"='Опубликовано'
 """ + document_union + """ ) blocks,
 LATERAL regexp_matches(blocks."HtmlContent",'https?://kurs[.]alfabank[.]ru/[A-Za-z0-9_/-]+','g') u(match);
 COMMIT;"""

@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.models import Material  # noqa: E402
+from app.models import Material, is_alfa_material_url  # noqa: E402
 
 # Discriminants were verified against EntityId joins in the actual 62-table dump.
 SOURCES = {
@@ -31,8 +31,12 @@ SOURCES = {
     "Glossary": ("glossary", None),
     "CalculatorPages": ("calculator", None),
 }
-# Only these two route patterns have independent public source confirmation.
-CONFIRMED_PATHS = {"article": "articles", "course": "courses"}
+# Маршруты подтверждены публичными страницами; ссылки и границы проверки — docs/material-links.md.
+CONFIRMED_PATHS = {
+    "article": "articles", "course": "courses", "document": "documents",
+    "webinar": "webinars", "podcast": "podcasts", "glossary": "vocabulary",
+    "calculator": "calculators",
+}
 ALLOWED_COLUMNS = {"Id", "Title", "Description", "Url", "Duration", "Cost", "IsClosed", "IsPublic", "TypeId", "Target"}
 
 
@@ -69,10 +73,14 @@ def source_url(value: str, kind: str) -> str | None:
     observed_path = ROOT / ".private/source-links.json"
     if observed_path.is_file():
         observed = json.loads(observed_path.read_text(encoding="utf-8"))
-        if value in observed:
-            return observed[value]
-    if parsed.scheme in {"https", "http"} and parsed.hostname == "kurs.alfabank.ru" and not parsed.username:
-        return value
+        candidate = observed.get(value)
+        if isinstance(candidate, str) and is_alfa_material_url(candidate):
+            return candidate
+    if parsed.scheme in {"https", "http"}:
+        candidate = parsed._replace(scheme="https").geturl()
+        return candidate if is_alfa_material_url(candidate) else None
+    if value.lower() in {"null", "undefined"}:
+        return None
     if kind in CONFIRMED_PATHS and re.fullmatch(r"[a-zA-Z0-9_-]+", value):
         return "https://kurs.alfabank.ru/" + CONFIRMED_PATHS[kind] + "/" + value + "/"
     # Never invent a route for a source type whose path is not established.
