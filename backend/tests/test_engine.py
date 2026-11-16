@@ -166,3 +166,14 @@ def test_unlabelled_specialized_startup_subject_is_not_general_fallback():
     assert not sector_compatibility(Material(id="a", source_type="article", title="Бизнес-план зоомагазина"), {"medical"})
     assert sector_compatibility(Material(id="b", source_type="article", title="Как составить бизнес-план: пошаговая инструкция"), {"medical"})
     assert sector_compatibility(Material(id="c", source_type="article", title="Бизнес-план медицинской клиники"), {"medical"})
+
+
+@pytest.mark.parametrize("url", ["https://evil.test/article", "https://kurs.alfabank.ru.evil.test/a", "http://kurs.alfabank.ru/a", "https://user@kurs.alfabank.ru/a", "https://kurs.alfabank.ru:999/a"])
+def test_organizer_links_reject_unofficial_destinations(url):
+    with pytest.raises(ValidationError):
+        Material(id="test", source_type="article", title="Тест", provenance="organizer", url=url)
+
+
+def test_organizer_link_and_missing_link_are_supported():
+    for url in [None, "https://kurs.alfabank.ru/articles/test/"]:
+        assert Material(id="test", source_type="article", title="Тест", provenance="organizer", url=url).url == url

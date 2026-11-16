@@ -250,6 +250,11 @@ export default function Home() {
   async function openMaterial(material:Material){setError('');setToast(current=>({...current,visible:false}));try{setSelected(await api<Material>('/catalog/'+encodeURIComponent(material.id)));}catch(e){setError((e as Error).message);}}
   function choosePersona(id:string){const p=personas.find(p=>p.id===id);if(p){setPersonaId(id);updateQuery(p.query);setProfile(p.profile);setComparison(null);}}
 
+  function sourceAction(m:Material) {
+    if(m.provenance==='synthetic')return <p className="source-note">Учебный пример · внешней страницы нет.</p>;
+    if(!m.url)return <p className="source-note">Адрес этого материала не подтверждён. Можно посмотреть описание или выбрать другой материал.</p>;
+    return <a className="primary route-open" href={m.url} target="_blank" rel="noopener noreferrer">Открыть на Альфа-Курсе <ArrowUpRight size={15} aria-hidden="true"/><span className="sr-only"> (в новой вкладке)</span></a>;
+  }
   function materialTags(m:Material){return <div className="material-tags"><span className={'format '+m.source_type}>{m.source_type==='document'?<FileText size={13}/>:<BookOpen size={13}/>} {formats[m.source_type]}</span><span className={m.access==='free'?'free':''}>{access[m.access]}</span>{m.duration&&<span>{m.duration}</span>}</div>;}
   function feedbackNotice() {
     return <div className="toast" role="status" aria-hidden={!toast.visible} data-visible={toast.visible}>
@@ -279,7 +284,7 @@ export default function Home() {
       <div className="reason"><span><strong>Почему этот материал</strong><br/>{item.reasons.slice(0,2).join(' · ')}</span></div>
       <div className="next-action"><strong>Следующий шаг</strong><p>{item.next_action}</p></div>
       {diagnostic&&<details className="diagnostic"><summary>Расчёт ранжирования · {item.rank_score.toFixed(3)}</summary><dl>{Object.entries(item.signals).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v.toFixed(3)}</dd></div>)}</dl><ul>{item.reasons.map(r=><li key={r}>{r}</li>)}</ul></details>}
-      <div className="card-footer"><button className="primary route-open" aria-label="Открыть материал" onClick={()=>openMaterial(m)}><span>Открыть<span className="route-open-detail"> материал</span></span><ArrowRight size={15} aria-hidden="true"/></button>{!diagnostic&&feedbackButtons(m)}</div>
+      <div className="card-footer">{sourceAction(m)}<button className="secondary route-open" aria-label={m.provenance==='synthetic'?"Открыть материал":"Подробнее о материале"} onClick={()=>openMaterial(m)}><span>{m.provenance==='synthetic'?"Открыть пример":"Подробнее"}</span><ArrowRight size={15} aria-hidden="true"/></button>{!diagnostic&&feedbackButtons(m)}</div>
     </div></article>;}
 
   const profileForm=<div className="profile-fields" id="profile-fields">
@@ -311,6 +316,7 @@ export default function Home() {
     <div aria-hidden="true" className={mobileMenu ? 'menu-backdrop visible' : 'menu-backdrop'} onClick={closeMenu}/>
     <div className="main-shell" inert={mobileMenu}>
       <main>
+        {info.catalog_mode==='full'?<p className="material-provenance">Материалы Альфа-Курса · {info.catalog_count} в каталоге. Статьи и обучение открываются на сайте платформы.</p>:<p className="material-provenance">Демонстрационные примеры. Для перехода к реальным материалам подключите каталог Альфа-Курса по README.</p>}
         <div className="compact-navigation">
           <button
             type="button"
@@ -408,6 +414,7 @@ export default function Home() {
               {materialTags(m)}
               <h2><button className="catalog-open" onClick={()=>openMaterial(m)}>{m.title}<ArrowUpRight size={22} aria-hidden="true"/></button></h2>
               <p>{m.description}</p>
+              {sourceAction(m)}
             </article>)}
           </div>
           {!catalog.items.length&&<div className="empty-state"><Search size={27}/><h3>Здесь пока ничего нет</h3><p>Попробуйте более короткий или другой запрос.</p></div>}
@@ -471,6 +478,7 @@ export default function Home() {
       {selected&&<>
         <div className="material-scroll">
           <div className="material-top">
+            {selected.provenance==='organizer'&&<p className="material-provenance">Материал Альфа-Курса</p>}
             {selected.provenance==='synthetic'&&<p className="material-provenance">Учебный пример · DEMO</p>}
             {materialTags(selected)}
             <button className="dialog-close" aria-label="Закрыть материал" onClick={()=>setSelected(null)}><X size={22}/></button>
@@ -482,9 +490,9 @@ export default function Home() {
             : <p className="material-access-note">{selected.provenance==='synthetic'
               ? 'Это учебный пример. Подробное содержание платного материала недоступно.'
               : selected.url
-                ? 'Подробное содержание и актуальные условия доступны у первоисточника.'
+                ? selected.access==='paid'||selected.access==='subscription' ? 'Для изучения может потребоваться покупка или подписка. Содержание и актуальные условия — на Альфа-Курсе.' : 'Полный материал откроется на Альфа-Курсе. Может потребоваться вход в аккаунт платформы.'
                 : 'Ссылка на первоисточник пока не подтверждена.'}</p>}
-          {selected.url&&<a className="primary external-link" href={selected.url} target="_blank" rel="noopener noreferrer">Перейти к первоисточнику <ArrowUpRight size={17}/></a>}
+          {sourceAction(selected)}
         </div>
         <div className="dialog-feedback">
           <h3>Как вам этот материал?</h3>

@@ -17,6 +17,10 @@
 
 ![Экран приложения](docs/screenshots/desktop-demo.png)
 
+## Материалы по ТЗ
+
+Для конкурсного сценария подключите каталог **Альфа-Курса** в режиме FULL по инструкции ниже. DEMO — синтетические примеры без внешних страниц. Сторонний каталог PUBLIC удалён. Правила ссылок и ограничения проверки: [переходы к материалам](docs/material-links.md).
+
 ## Запуск для проверки
 
 Нужен работающий Docker Desktop с Linux containers и Compose v2. На Windows не требуется отдельно устанавливать Python, Node или PostgreSQL. Первый запуск скачивает образы и зависимости из публичных реестров. После сборки основной режим не обращается к AI API.
@@ -73,6 +77,7 @@ docker compose -f compose.yaml -f compose.semantic.yaml up --build
 uv venv --python 3.13 .venv
 uv pip install --python .venv/Scripts/python.exe -r backend/requirements.txt
 .venv/Scripts/python.exe scripts/audit_database.py
+.venv/Scripts/python.exe scripts/import_catalog.py
 .venv/Scripts/python.exe scripts/extract_source_links.py
 .venv/Scripts/python.exe scripts/import_catalog.py
 docker compose -f compose.yaml -f compose.full.yaml up --build
@@ -80,7 +85,7 @@ docker compose -f compose.yaml -f compose.full.yaml up --build
 
 Если аудиторский контейнер уже существует, скрипт остановится, ничего не удаляя. Можно выбрать новое имя `-Container hac-audit-another` и передать его обоим Python-скриптам через `--container hac-audit-another`. Это не рабочая база приложения: сеть отключена, порты не опубликованы, дамп подключён только для чтения, восстановление идёт в tmpfs. Перед восстановлением нового неизвестного дампа изучить его schema-only SQL.
 
-Импорт не читает тела уроков, EmbedItems, IP и пользовательские события. Выгружает только разрешённые краткие метаданные и сохраняет `.private/catalog.json`. Проверено 1 476 строк после фильтров, 1 473 после дедупликации. 507 адресов остаются неподтверждёнными: API возвращает `url=null`, UI объясняет ограничение. Для Articles/Courses пути сопоставлены с публичными страницами, но все ссылки по HTTP ещё не проверены.
+Импорт не читает тела уроков, EmbedItems, IP и пользовательские события. Выгружает только разрешённые краткие метаданные и сохраняет `.private/catalog.json`. В текущем импорте 1 476 материалов; адреса сформированы из исходных URL/slug и подтверждённых публичных маршрутов семи типов. Это не означает HTTP-проверку каждой страницы: на машине проверки сайт возвращает ошибку доверия TLS. Если адрес неизвестен или небезопасен, API сохраняет `url=null`, интерфейс объясняет ограничение. Подробнее — [переходы к материалам](docs/material-links.md).
 
 FULL + E5: добавить `-f compose.semantic.yaml` к команде после подготовки модели. История исходных пользователей не подключена к браузерной сессии: прогресс приложения — собственные события прототипа. Содержимое исходной БД не меняется.
 

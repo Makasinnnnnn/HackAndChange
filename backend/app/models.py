@@ -1,10 +1,28 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Kind = Literal["article", "course", "document", "webinar", "podcast", "glossary", "calculator"]
+
+
+def is_alfa_material_url(value: str) -> bool:
+    """Разрешён только HTTPS-адрес официального источника без учётных данных."""
+    try:
+        parsed = urlparse(value)
+        return bool(
+            parsed.scheme == "https"
+            and parsed.hostname == "kurs.alfabank.ru"
+            and parsed.port in {None, 443}
+            and not parsed.username
+            and not parsed.password
+            and parsed.path.strip("/")
+            and not any(char.isspace() or ord(char) < 32 or char == "\\" for char in value)
+        )
+    except ValueError:
+        return False
 
 
 class Profile(BaseModel):
@@ -46,6 +64,8 @@ class Material(BaseModel):
 
     @model_validator(mode="after")
     def protect_content(self):
+        if self.provenance == "organizer" and self.url and not is_alfa_material_url(self.url):
+            raise ValueError("Ссылка материала должна вести на официальный сайт Альфа-Курса")
         if self.demo_content and (self.provenance != "synthetic" or self.access != "free"):
             raise ValueError("Only original free demo content may be included")
         return self

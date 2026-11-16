@@ -440,10 +440,10 @@ main { flex: 1; width: 100%; max-width: 1450px; margin: 0 auto; padding: 44px va
 .reason strong, .next-action strong { font-size: 13px; }
 .next-action p { margin-top: 2px; color: var(--muted); }
 .card-footer {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
   border-top: 1px solid var(--line); padding-top: 18px; margin-top: 22px;
 }
-.card-footer .route-open { flex: none; min-height: 44px; padding-inline: 14px; }
+.card-footer .route-open { flex: 0 1 auto; max-width: 100%; min-height: 44px; padding-inline: 14px; }
 .feedback { display: flex; gap: 6px; }
 .feedback button {
   display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 5px;
@@ -1152,3 +1152,7 @@ footer {
 
 .intent-answer{display:grid;gap:10px;max-width:620px;margin:16px auto;text-align:left}.intent-answer input{width:100%;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:white;font:inherit}
 .route-stale{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}.route-stale p{margin:6px 0 0}.route-stale .secondary{white-space:normal;max-width:100%}
+
+.source-note { color: var(--muted); font-size: 14px; line-height: 1.5; flex-basis: 100%; }
+
+.card-footer .feedback { flex-wrap: wrap; }
