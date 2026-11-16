@@ -1,6 +1,6 @@
 # Переходы к материалам Альфа-Курса
 
-Текущая объединённая версия и заново выполненные проверки: [STATUS](STATUS.md), [интеграция](integration-2026-11-16.md). Раздел с портом3082 и168 тестами ниже — протокол автора PR #3 в его окружении, а не перечень работающих контейнеров этого клона.
+Текущая объединённая версия и заново выполненные проверки: [STATUS](STATUS.md), [интеграция](integration-2026-11-16.md). Раздел с портом 3082 и 168 тестами ниже — протокол автора PR #3 в его окружении, а не перечень работающих контейнеров этого клона.
 
 16.11.2026. Основной конкурсный сценарий — FULL с каталогом из выгрузки по ссылке на странице 14 ТЗ. DEMO содержит только авторские примеры и прямо обозначен в интерфейсе. Эксперимент PUBLIC удалён: внешние источники не заменяют материалы Альфа-Курса.
 
@@ -27,14 +27,16 @@
 Из корня проекта, после восстановления базы по README:
 
 ```powershell
-.venv/Scripts/python.exe scripts/import_catalog.py --container hac-audit-20261116-links
-.venv/Scripts/python.exe scripts/extract_source_links.py --container hac-audit-20261116-links
-.venv/Scripts/python.exe scripts/import_catalog.py --container hac-audit-20261116-links
+.venv/Scripts/python.exe scripts/import_catalog.py --container hac-audit-20261112
+.venv/Scripts/python.exe scripts/extract_source_links.py --container hac-audit-20261112
+.venv/Scripts/python.exe scripts/import_catalog.py --container hac-audit-20261112
 $env:WEB_PORT='3082'
 docker compose -p hac-public-materials -f compose.yaml -f compose.full.yaml up -d --build
 ```
 
 Первый импорт определяет бесплатные статьи/документы по данным каталога; затем извлекаются только их канонические ссылки, без сохранения тел. IsPublic не используется как признак бесплатности. Выгрузка и производный каталог остаются в .private и исключены из образов/Git.
+
+Имя контейнера совпадает с обычным `restore_private.ps1`. Если при восстановлении выбрано другое `-Container`, передайте то же имя всем трём командам `--container`; не используйте рабочую БД приложения.
 
 ## Результат проверки 16.11.2026
 
