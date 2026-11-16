@@ -16,8 +16,8 @@ def is_alfa_material_url(value: str) -> bool:
             parsed.scheme == "https"
             and parsed.hostname == "kurs.alfabank.ru"
             and parsed.port in {None, 443}
-            and not parsed.username
-            and not parsed.password
+            and parsed.username is None
+            and parsed.password is None
             and parsed.path.strip("/")
             and not any(char.isspace() or ord(char) < 32 or char == "\\" for char in value)
         )
@@ -80,8 +80,8 @@ class Material(BaseModel):
             if (
                 parsed.scheme not in {"http", "https"}
                 or not parsed.hostname
-                or parsed.username
-                or parsed.password
+                or parsed.username is not None
+                or parsed.password is not None
             ):
                 raise ValueError("Only absolute HTTP(S) source links are allowed")
         return value

@@ -19,6 +19,7 @@ def test_unknown_routes_are_not_fabricated(monkeypatch, tmp_path):
     assert importer.source_url("unknown-slug", "unknown") is None
     assert importer.source_url("javascript:alert(1)", "article") is None
     assert importer.source_url("//evil.test/path", "article") is None
+    assert importer.source_url("https://[broken/", "article") is None
     assert (
         importer.source_url("existing-slug", "article") == "https://kurs.alfabank.ru/articles/existing-slug/"
     )

@@ -177,3 +177,9 @@ def test_organizer_links_reject_unofficial_destinations(url):
 def test_organizer_link_and_missing_link_are_supported():
     for url in [None, "https://kurs.alfabank.ru/articles/test/"]:
         assert Material(id="test", source_type="article", title="Тест", provenance="organizer", url=url).url == url
+
+
+@pytest.mark.parametrize("url", ["https://@kurs.alfabank.ru/a", "https://:@kurs.alfabank.ru/a"])
+def test_even_empty_url_credentials_are_rejected(url):
+    with pytest.raises(ValidationError):
+        Material(id="test", source_type="article", title="Тест", provenance="organizer", url=url)

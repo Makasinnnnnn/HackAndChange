@@ -69,7 +69,10 @@ def plain(value: str | None, limit=400) -> str:
 
 def source_url(value: str, kind: str) -> str | None:
     value = (value or "").strip()
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
     observed_path = ROOT / ".private/source-links.json"
     if observed_path.is_file():
         observed = json.loads(observed_path.read_text(encoding="utf-8"))

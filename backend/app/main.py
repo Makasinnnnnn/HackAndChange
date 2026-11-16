@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Альфа-Маршрут",
-    version="1.2.3",
+    version="1.2.4",
     lifespan=lifespan,
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",

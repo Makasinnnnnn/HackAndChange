@@ -7,9 +7,9 @@
 Что считает
 -----------
 Для каждой размеченной пары (запрос -> список материалов):
-  * Precision@k  = |top_k ∩ relevant| / k_eff
+  * Precision@k  = |top_k ∩ relevant| / k
   * pooled Recall@k = |top_k ∩ relevant| / |relevant|
-  * NDCG@k       = DCG@k_eff / IDCG@k_eff, бинарная релевантность (1/0)
+  * NDCG@k       = DCG@k / IDCG@k, бинарная релевантность (1/0)
   * MRR@k        = 1 / позиция первого релевантного (0, если нет)
 где k_eff = min(k, число фактически показанных материалов).
 
@@ -20,8 +20,8 @@
 --------------------------------------------------------------
 1. Это **pooled recall**, а не истинный recall: размечен только пул показанных
    карточек. Материал, которого система не показала, никто не оценивал.
-2. Неразименённые карточки в выдаче считаются нерелевантными (0), их число
-   выводится в отчёт отдельным счётчиком.
+2. Пары с неполной разметкой объединённого пула пропускаются целиком.
+   Пустая выдача решения с известными релевантными материалами оценивается нулём.
 3. NDCG — бинарный (градуированной шкалы в CSV нет).
 4. Агрегация — macro-среднее по парам, не micro.
 5. При n < 10 пар метрики нестабильны: в отчёт попадает предупреждение.
@@ -29,17 +29,17 @@
 Разметка (см. audit/blind_eval_queries.md)
 ------------------------------------------
 * `human_relevant_ids`, `human_irrelevant_ids`: id через `|` или `;`.
-* Пустая `human_relevant_ids` -> пара пропускается с warning.
+* Обе колонки меток пусты -> пара пропускается; явно отрицательные метки дают ноль.
 * Строка, начинающаяся с `# example`, игнорируется.
 * `notes`, содержащий `out_of_scope`, исключает пару из метрик (учитывается
-  отдельно как кейс «правильный отказ»).
+  отдельно со счётчиком ошибочных непустых выдач).
 
 Использование
 -------------
     python audit/score_blind_eval.py --validate-only      # проверить CSV, не считать
     python audit/score_blind_eval.py                      # посчитать и написать отчёт
     python audit/score_blind_eval.py --k 10 --input audit/blind_eval_template.csv \
-        --output audit/blind_eval_report.md
+        --output .private/blind-evaluation/report.md
 """
 
 from __future__ import annotations
@@ -51,12 +51,13 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT = SCRIPT_DIR / "blind_eval_template.csv"
-DEFAULT_OUTPUT = SCRIPT_DIR / "blind_eval_report.md"
+PRIVATE_DIR = SCRIPT_DIR.parent / ".private"
+DEFAULT_OUTPUT = PRIVATE_DIR / "blind-evaluation" / "report.md"
 DEFAULT_K = 10
 
 EXAMPLE_MARKER = "# example"
@@ -110,6 +111,7 @@ class Pair:
     relevant: list[str]
     irrelevant: list[str]
     warnings: list[str] = field(default_factory=list)
+    baseline_captured: bool = False
 
 
 @dataclass
@@ -147,21 +149,28 @@ def load_pairs(path: Path, k: int) -> tuple[list[Pair], list[str], list[str]]:
         rows = list(reader)
 
     pairs: list[Pair] = []
+    query_ids: set[str] = set()
     for index, row in enumerate(rows, start=2):
         first_cell = (row.get("query_id") or "").strip()
         if first_cell.casefold().startswith(EXAMPLE_MARKER):
             continue
         if not first_cell and not (row.get("query_text") or "").strip():
             continue  # полностью пустая строка
+        if first_cell in query_ids:
+            errors.append(f"Строка {index}: повтор query_id {first_cell}")
+        query_ids.add(first_cell)
 
         item_warnings: list[str] = []
         tops: dict[str, list[str]] = {}
         for system in SYSTEMS:
             values = [(row.get(column) or "").strip() for column in top_columns(system, k)]
+            first_empty = next((i for i, value in enumerate(values) if not value), len(values))
+            if any(values[first_empty:]):
+                errors.append(f"Строка {index}: {system}: пропущенная позиция внутри ранжирования")
             values = [value for value in values if value]
             unique, duplicates = dedupe_keep_order(values)
             if duplicates:
-                item_warnings.append(f"{system}: повторяющиеся id в выдаче ({duplicates}), оставлен первый")
+                errors.append(f"Строка {index}: {system}: повторяющиеся id в выдаче ({duplicates})")
             if len(unique) > k:
                 item_warnings.append(f"{system}: больше {k} id, лишние отброшены")
                 unique = unique[:k]
@@ -171,9 +180,7 @@ def load_pairs(path: Path, k: int) -> tuple[list[Pair], list[str], list[str]]:
         irrelevant = split_ids(row.get("human_irrelevant_ids") or "")
         conflicts = sorted(set(relevant) & set(irrelevant))
         if conflicts:
-            item_warnings.append(
-                "id одновременно в relevant и irrelevant (считаем релевантным): " + ", ".join(conflicts)
-            )
+            errors.append(f"Строка {index}: конфликт relevant/irrelevant: " + ", ".join(conflicts))
         not_shown = sorted(set(relevant) - set(tops["solution"]) - set(tops["baseline"]))
         if not_shown:
             item_warnings.append(
@@ -191,6 +198,7 @@ def load_pairs(path: Path, k: int) -> tuple[list[Pair], list[str], list[str]]:
                 relevant=relevant,
                 irrelevant=irrelevant,
                 warnings=item_warnings,
+                baseline_captured=(row.get("baseline_captured") or "").strip().casefold() == "true",
             )
         )
     return pairs, errors, warnings
@@ -210,7 +218,7 @@ def score_pairs(pairs: list[Pair], k: int) -> tuple[list[Score], list[Score], li
             warnings.append(f"[{pair.query_id}] помечено out_of_scope: в метрики не идёт")
             skipped.append(pair)
             continue
-        if not pair.relevant:
+        if not pair.relevant and not pair.irrelevant:
             warnings.append(
                 f"[{pair.query_id}] пустой human_relevant_ids: пара пропущена "
                 "(если это честный отказ — поставьте out_of_scope в notes)"
@@ -218,15 +226,21 @@ def score_pairs(pairs: list[Pair], k: int) -> tuple[list[Score], list[Score], li
             skipped.append(pair)
             continue
 
+        judged = set(pair.relevant) | set(pair.irrelevant)
+        unjudged = set().union(*(set(ids) for ids in pair.tops.values())) - judged
+        if unjudged:
+            warnings.append(f"[{pair.query_id}] неполная разметка пула: пара пропущена целиком")
+            skipped.append(pair)
+            continue
+
         relevant = set(pair.relevant)
+        if not relevant:
+            warnings.append(f"[{pair.query_id}] весь пул оценён отрицательно: Recall/NDCG условно равны 0")
         for system in SYSTEMS:
             tops = pair.tops[system]
             if not tops:
-                if system == "baseline":
+                if system == "baseline" and not pair.baseline_captured:
                     continue  # baseline может отсутствовать целиком
-                warnings.append(f"[{pair.query_id}] пустая выдача решения: пара пропущена")
-                skipped.append(pair)
-                break
             k_eff = min(k, len(tops))
             shown = tops[:k_eff]
             hits = sum(1 for material_id in shown if material_id in relevant)
@@ -238,7 +252,7 @@ def score_pairs(pairs: list[Pair], k: int) -> tuple[list[Score], list[Score], li
                 for position, material_id in enumerate(shown)
                 if material_id in relevant
             )
-            ideal_hits = min(len(relevant), k_eff)
+            ideal_hits = min(len(relevant), k)
             idcg = sum(1.0 / math.log2(position + 2) for position in range(ideal_hits))
             ndcg = dcg / idcg if idcg > 0 else 0.0
             mrr = next(
@@ -253,15 +267,15 @@ def score_pairs(pairs: list[Pair], k: int) -> tuple[list[Score], list[Score], li
                 shown=len(shown),
                 hits=hits,
                 unjudged=unjudged,
-                precision=hits / k_eff,
-                recall=hits / len(relevant),
+                precision=hits / k,
+                recall=hits / len(relevant) if relevant else 0.0,
                 ndcg=ndcg,
                 mrr=mrr,
             )
             scores.append(entry) if system == "solution" else baseline_scores.append(entry)
             if k_eff < k:
                 warnings.append(
-                    f"[{pair.query_id}] {system}: показано {k_eff} < {k}; метрики @{k} считаны по k_eff={k_eff}"
+                    f"[{pair.query_id}] {system}: показано {k_eff} < {k}; знаменатель Precision@{k} остаётся {k}"
                 )
     return scores, baseline_scores, warnings, skipped
 
@@ -297,7 +311,7 @@ def render_report(
     warnings: list[str],
     skipped: list[Pair],
 ) -> str:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     solution = summarize(scores)
     baseline = summarize(baseline_scores) if baseline_scores else None
 
@@ -321,13 +335,17 @@ def render_report(
     lines.append("## Ограничения этого расчёта (читать до цифр)")
     lines.append("")
     lines.append("1. **Pooled Recall**, не истинный recall: размечен только пул показанных карточек.")
-    lines.append("2. Неразименённые карточки в выдаче считаются нерелевантными (0).")
+    lines.append("2. Неразмеченный пул исключается целиком; неизвестная оценка не считается отрицательной.")
     lines.append("   Среднее число таких карточек на пару: " + (f"{solution['unjudged']:.2f}" if scores else "—") + ".")
     lines.append("3. NDCG бинарный (градуированной шкалы в CSV нет).")
     lines.append("4. Агрегация — macro по парам.")
     if len(annotated) < 10:
         lines.append(f"5. **n = {len(annotated)} < 10: метрики нестабильны**, доверительный интервал широкий.")
-    lines.append("6. Это метки людей на малом наборе; они не превращаются в «доказанное превосходство».")
+    lines.append("6. CSV не подтверждает автора меток: источник и независимость оценки проверяются отдельно.")
+    lines.append(f"7. Precision@{k} делится на {k}, в том числе для короткой и пустой выдачи.")
+    out_of_scope = [pair for pair in pairs if "out_of_scope" in pair.notes.casefold()]
+    lines.append(f"8. Out-of-scope кейсов: {len(out_of_scope)}; ошибочная непустая выдача решения: "
+                 f"{sum(bool(pair.tops['solution']) for pair in out_of_scope)}.")
     lines.append("")
 
     if not baseline_scores:
@@ -412,7 +430,7 @@ def render_report(
     lines.append("")
     if skipped:
         for pair in skipped:
-            reason = "out_of_scope" if "out_of_scope" in pair.notes.casefold() else "нет human_relevant_ids"
+            reason = "out_of_scope" if "out_of_scope" in pair.notes.casefold() else "нет полной разметки пула"
             lines.append(f"- `{pair.query_id}` — {reason}")
     else:
         lines.append("- нет")
@@ -440,20 +458,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Посчитать blind-eval метрики по размеченному CSV.")
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--k", type=int, default=DEFAULT_K)
+    parser.add_argument("--k", type=int, default=DEFAULT_K, choices=range(1, 11))
     parser.add_argument(
         "--validate-only",
         action="store_true",
         help="только проверить структуру CSV, ничего не считать и не писать",
     )
     args = parser.parse_args(argv)
-
-    if args.k != DEFAULT_K:
-        print(
-            f"Внимание: k={args.k}, а столбцы шаблона рассчитаны на {DEFAULT_K}. "
-            "Для k>10 нужны дополнительные столбцы top_*.",
-            file=sys.stderr,
-        )
 
     pairs, errors, load_warnings = load_pairs(args.input, args.k)
     for error in errors:
@@ -467,7 +478,7 @@ def main(argv: list[str] | None = None) -> int:
     if not pairs:
         print(
             f"ОШИБКА: в {args.input} нет размеченных строк (только заголовок и/или example).\n"
-            "Шаблон не считается: сначала заполните пары и разметьте human_relevant_ids.",
+            "Шаблон не считается: сначала заполните пары и явные оценки кандидатов.",
             file=sys.stderr,
         )
         return 2
@@ -484,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
         for message in warnings:
             print(f"ВНИМАНИЕ: {message}", file=sys.stderr)
         print(
-            "ОШИБКА: ни одной пары не удалось оценить (все human_relevant_ids пусты или out_of_scope).\n"
+            "ОШИБКА: ни одной пары не удалось оценить (нет полностью размеченных пар или все out_of_scope).\n"
             "Отчёт не записан — иначе получились бы нули, выданные за метрики.",
             file=sys.stderr,
         )
@@ -500,12 +511,22 @@ def main(argv: list[str] | None = None) -> int:
         warnings=load_warnings + warnings,
         skipped=skipped,
     )
-    args.output.write_text(report, encoding="utf-8")
+    output = args.output.resolve()
+    if not output.is_relative_to(PRIVATE_DIR.resolve()):
+        print("ОШИБКА: подробный отчёт должен оставаться в .private/", file=sys.stderr)
+        return 2
+    output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with output.open("x", encoding="utf-8") as handle:
+            handle.write(report)
+    except FileExistsError:
+        print("ОШИБКА: отчёт уже существует; выберите новое имя", file=sys.stderr)
+        return 2
 
     solution = summarize(scores)
     print(f"Оценено пар: {int(solution['n'])}")
     print(
-        f"Precision@{args.k}(k_eff по доступным)={solution['precision']:.3f}  "
+        f"Precision@{args.k}={solution['precision']:.3f}  "
         f"pooled Recall@{args.k}={solution['recall']:.3f}  "
         f"NDCG@{args.k}={solution['ndcg']:.3f}  MRR@{args.k}={solution['mrr']:.3f}"
     )

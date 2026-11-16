@@ -1,6 +1,6 @@
 # Устройство рекомендательного движка
 
-Текущая версия — pipeline v6, релиз 1.2.0. Пошаговый контракт и модули: [recommendation-pipeline.md](recommendation-pipeline.md). Проверки и ограничения: [audit-1.2.md](audit-1.2.md). Исторические изменения вынесены в recommendation-history.md.
+Текущая версия — pipeline v7, runtime-релиз 1.2.4. Пошаговый контракт и модули: [recommendation-pipeline.md](recommendation-pipeline.md). Проверки и ограничения: [audit-1.2.md](audit-1.2.md). Исторические изменения вынесены в recommendation-history.md.
 
 ## Evidence и score
 

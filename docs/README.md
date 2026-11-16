@@ -1,3 +1,6 @@
+- [Объединённая версия 1.2.4 и разбор Markdown разработчиков](integration-2026-11-16.md)
+- [Переходы к источникам](material-links.md), [релиз 1.2.4](release-1.2.4.md)
+
 # Карта документации
 
 - [Общие инструкции агентам](../AGENTS.md), [работа в команде](TEAM.md), [задачи дополнительному помощнику](assistant-tasks.md)
@@ -8,13 +11,13 @@
 - [Архитектура](architecture.md), [решения](decisions.md), [алгоритм](recommender-design.md)
 - [Аудит данных](data-audit.md), [оценка](evaluation.md), [бизнес-метрики](product-metrics.md)
 - [Генеративный AI](llm.md), [запуск Docker](deployment.md), [проверки](verification.md)
-- [Версия 1.2](release-1.2.3.md), [аудит 120 запросов](audit-1.2.md), [сдача](submission.md), [ограничения](limitations.md)
+- [Версия 1.2](release-1.2.4.md), [аудит 120 запросов](audit-1.2.md), [сдача](submission.md), [ограничения](limitations.md)
 - [Сценарий показа](demo-script.md), [вопросы жюри](jury-qa.md), [комплект сдачи](submission.md)
 
-Исторические записи сохраняют результаты на момент проверки. Текущие границы версии указаны в STATUS и release-1.2.3.
+Исторические записи сохраняют результаты на момент проверки. Текущие границы версии указаны в STATUS и release-1.2.4.
 
 [Импорт истории](history.md) · [Выступление и резервный показ](pitch.md)
 
-Текущая локальная переработка алгоритма: [pipeline v6](recommendation-pipeline.md).
+Текущая локальная переработка алгоритма: [pipeline v7](recommendation-pipeline.md).
 
-[Аудит150 бытовых запросов](audit-natural-150.md) · [Что осталось](NEXT.md)
+[Аудит 150 бытовых запросов](audit-natural-150.md) · [Что осталось](NEXT.md)
