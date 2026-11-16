@@ -1,24 +1,10 @@
-- [Объединённая версия 1.2.4 и разбор Markdown разработчиков](integration-2026-11-16.md)
-- [Полная инструкция запуска для жюри: Docker, E5, Qwen, FULL](../START_HERE_JURY.md)
-- [Переходы к источникам](material-links.md), [релиз 1.2.4](release-1.2.4.md)
+# Техническая документация
 
-# Карта документации
-
-- [Общие инструкции агентам](../AGENTS.md), [работа в команде](TEAM.md), [задачи дополнительному помощнику](assistant-tasks.md)
-
-- [Запуск и назначение](../README.md)
-- [Состояние](STATUS.md), [план](plan.md), [журнал](worklog.md)
-- [Требования](case-requirements.md), [уточнения организаторов](organizer-clarifications.md)
-- [Архитектура](architecture.md), [решения](decisions.md), [алгоритм](recommender-design.md)
-- [Аудит данных](data-audit.md), [оценка](evaluation.md), [бизнес-метрики](product-metrics.md)
-- [Генеративный AI](llm.md), [запуск Docker](deployment.md), [проверки](verification.md)
-- [Версия 1.2](release-1.2.4.md), [аудит 120 запросов](audit-1.2.md), [сдача](submission.md), [ограничения](limitations.md)
-- [Сценарий показа](demo-script.md), [вопросы жюри](jury-qa.md), [комплект сдачи](submission.md)
-
-Исторические записи сохраняют результаты на момент проверки. Текущие границы версии указаны в STATUS и release-1.2.4.
-
-[Импорт истории](history.md) · [Выступление и резервный показ](pitch.md)
-
-Текущая локальная переработка алгоритма: [pipeline v7](recommendation-pipeline.md).
-
-[Аудит 150 бытовых запросов](audit-natural-150.md) · [Что осталось](NEXT.md)
+- [Полная инструкция запуска для жюри](../START_HERE_JURY.md).
+- [Архитектура](architecture.md), [подбор материалов](recommendation-pipeline.md).
+- [Требования кейса](case-requirements.md), [структура и импорт данных](data-audit.md).
+- [Переходы к источникам](material-links.md), [AI-адаптер](llm.md), [импорт истории](history.md).
+- [Оценка качества](evaluation.md), [план бизнес-метрик](product-metrics.md), [ограничения](limitations.md).
+- [Протокол проверок](verification.md), [изменения 1.2.4](release-1.2.4.md).
+- [Сценарий записи демонстрации](DEMO_RECORDING.md).
+- [PDF-презентация](../output/presentation/alfa-route-1.2.pdf), [PPTX](../output/presentation/alfa-route-1.2.pptx).

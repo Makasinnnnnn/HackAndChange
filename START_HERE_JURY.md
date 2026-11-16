@@ -2,7 +2,7 @@
 
 Hack&Change 2026, Альфа-Банк, трек 1. Рекомендации образовательных материалов для предпринимателей. Конкурсный прототип, не официальный сервис банка.
 
-Код: <https://github.com/Makasinnnnnn/HackAndChange>. Проверенный runtime-релиз: `v1.2.4`, коммит `b0d9e1ec73c3483ec4b512dc4189632ab9644e20`. Комплект `alfa-route-1.2.4-jury.zip` содержит тот же код и дополнительную документацию для запуска; опубликованный тег не заменяется. Презентация: [PDF](output/presentation/alfa-route-1.2.pdf), [редактируемый PPTX](output/presentation/alfa-route-1.2.pptx). Внутри презентации указана версия 1.2.4, имя файла содержит minor-версию.
+Код: <https://github.com/Makasinnnnnn/HackAndChange>. Проверенный runtime-релиз: `v1.2.4`, коммит `b0d9e1ec73c3483ec4b512dc4189632ab9644e20`. Комплект `alfa-route-1.2.4-submission-clean.zip` содержит тот же runtime-код и очищенную техническую документацию для запуска; опубликованный тег не заменяется. Презентация: [PDF](output/presentation/alfa-route-1.2.pdf), [редактируемый PPTX](output/presentation/alfa-route-1.2.pptx). Внутри презентации указана версия 1.2.4, имя файла содержит minor-версию.
 
 ## 1. Какой вариант запускать
 
@@ -352,7 +352,30 @@ $env:TEST_SEMANTIC_MODEL_DIR=(Resolve-Path .private/models/e5).Path
 .venv/Scripts/python.exe -m pytest -q
 ```
 
-В проверенной 1.2.4 прошло 182 теста с реальной E5; без весов соответствующая опциональная проверка пропускается. Браузерные проверки: 46 сценариев desktop/mobile, выполняются на отдельном DEMO, поскольку создают feedback. Инструкция изоляции — [docs/TEAM.md](docs/TEAM.md). Не запускайте E2E против пользовательского FULL.
+В проверенной 1.2.4 прошло 182 теста с реальной E5; без весов соответствующая опциональная проверка пропускается. Браузерные проверки: 46 сценариев desktop/mobile, выполняются на отдельном DEMO, поскольку создают feedback. Для E2E поднимите отдельный DEMO на свободном порту и задайте E2E_BASE_URL; команды ниже. Не запускайте E2E против пользовательского FULL.
+
+
+Отдельный E2E-прогон (первый запуск потребует Chrome):
+
+```powershell
+$jurySavedWebPort=$env:WEB_PORT
+$jurySavedBaseUrl=$env:E2E_BASE_URL
+try {
+    $env:WEB_PORT='3091'
+    docker compose -p alfa-jury-e2e --env-file .env.example up -d --build --wait --wait-timeout 240
+    if ($LASTEXITCODE -ne 0) { throw 'Test DEMO startup failed' }
+    Push-Location frontend
+    try { npx playwright install chrome } finally { Pop-Location }
+    $env:E2E_BASE_URL='http://127.0.0.1:3091'
+    npm --prefix frontend run test:e2e
+} finally {
+    docker compose -p alfa-jury-e2e --env-file .env.example down
+    $env:WEB_PORT=$jurySavedWebPort
+    $env:E2E_BASE_URL=$jurySavedBaseUrl
+}
+```
+
+Порт 3091 должен быть свободен; имя alfa-jury-e2e относится только к этому тестовому экземпляру. Его том не удаляется этой командой, рабочий проект жюри не останавливается.
 
 Если Python-окружение уже есть, не повторяйте создание venv. Дополнительный live-smoke из корня, подставив свой порт:
 
@@ -367,11 +390,11 @@ Smoke создаёт собственную тестовую сессию и о�
 | Симптом | Проверка и действие |
 |---|---|
 | `Cannot connect to Docker daemon` | Запустить Docker Desktop, проверить Linux engine и `docker version`. |
-| Порт 3080 занят | Выбрать WEB_PORT, например3090; использовать этот порт во всех URL. Не останавливать неизвестный сервис. |
-| E5 mount/model missing | Выполнить загрузку раздела4; проверить все файлы, затем bootstrap. Для быстрой проверки убрать semantic overlay. |
+| Порт 3080 занят | Выбрать WEB_PORT, например 3090; использовать этот порт во всех URL. Не останавливать неизвестный сервис. |
+| E5 mount/model missing | Выполнить загрузку раздела 4; проверить все файлы, затем bootstrap. Для быстрой проверки убрать semantic overlay. |
 | `llm_enabled=false`, AI-кнопки нет | Запустить нужный вариант с `compose.llm.yaml`; переменные в `.env` сами по себе не подключают overlay. |
 | AI `model_missing` | Указать LLM_MODEL и пересоздать API через соответствующий `up`. Для llama.cpp имя `qwen-local`, для Ollama — установленный тег. |
-| AI `unavailable` | Проверить host `/health`, затем из Docker; сопоставить порт18080/11434 и base URL. Дождаться загрузки модели. |
+| AI `unavailable` | Проверить host `/health`, затем из Docker; сопоставить порт 18080/11434 и base URL. Дождаться загрузки модели. |
 | AI `invalid_response`/`unchanged` | Провайдер/модель могут не дать подходящую схему или новую формулировку. Основной маршрут доступен; не выдавать старую фразу за новое улучшение. |
 | AI `configuration_blocked` | Локальный режим допускает только разрешённые локальные имена HTTP; внешний режим требует HTTPS и явного `LLM_ALLOW_EXTERNAL=true`. |
 | FULL не стартует | Проверить `.private/catalog.json` и правильный overlay. Дамп `.backup` нельзя монтировать как готовый JSON. |
@@ -429,9 +452,9 @@ if (Test-Path -LiteralPath .private/llama-server.pid) {
 | Компонент | Адрес/путь |
 |---|---|
 | UI, API proxy, Swagger | `127.0.0.1:3080`, `/api/docs`; порт меняется WEB_PORT |
-| FastAPI/PostgreSQL | Только внутри сети Compose; порты8000/5432 на хост не публикуются |
+| FastAPI/PostgreSQL | Только внутри сети Compose; порты 8000/5432 на хост не публикуются |
 | Windows Qwen llama.cpp | `127.0.0.1:18080`; в контейнере host.docker.internal:18080 |
-| Альтернативный Ollama | Обычно127.0.0.1:11434; base URL для адаптера заканчивается на `/v1` |
+| Альтернативный Ollama | Обычно 127.0.0.1:11434; base URL для адаптера заканчивается на `/v1` |
 | Приватный каталог | `.private/catalog.json`, read-only mount FULL |
 | Веса E5/Qwen, runtime | `.private/models/e5`, `.private/models/qwen`, `.private/tools` |
 | Персональные настройки | `.env`, отсутствует в архиве; шаблон `.env.example` включён |
@@ -445,6 +468,6 @@ if (Test-Path -LiteralPath .private/llama-server.pid) {
 
 ## 15. Что включено в чистый комплект
 
-Все публичные файлы текущего Git-дерева: код backend/frontend, Dockerfiles/Compose, фиксированные зависимости, тесты, DEMO, общие AGENTS, документация и PDF/PPTX. Исторические аудиты сохранены как документация; их старые числа не являются результатами нового прогона. Текущие проверки версии1.2.4 — [docs/STATUS.md](docs/STATUS.md), [разбор интеграции](docs/integration-2026-11-16.md).
+Код backend/frontend, Dockerfiles/Compose, фиксированные зависимости, тесты, DEMO, техническая документация и PDF/PPTX. Конфигурации помощников, внутренние планы и рабочие отчёты удалены из сдаваемого дерева. Технические проверки 1.2.4 — [docs/verification.md](docs/verification.md). Готовая презентация и точный сценарий необязательной видеозаписи — [docs/DEMO_RECORDING.md](docs/DEMO_RECORDING.md).
 
 Архив не содержит `.git`, `.env`, `.private`, дамп/реальный каталог/историю, веса, node_modules, venv, сборочные кэши и тестовые логи. Его SHA-256 находится в соседнем файле `.zip.sha256`; проверить можно `Get-FileHash -Algorithm SHA256 -LiteralPath <путь-к-архиву>`. Публикация кода или наличие этого ZIP не является фактической отправкой организаторам.

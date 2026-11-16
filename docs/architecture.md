@@ -1,6 +1,6 @@
 # Архитектура
 
-Релиз 1.2: модульный pipeline v6 описан в [recommendation-pipeline.md](recommendation-pipeline.md); актуальные проверки — [audit-1.2.md](audit-1.2.md).
+Релиз 1.2.4: модульный pipeline v7 описан в [recommendation-pipeline.md](recommendation-pipeline.md); проверки — [verification.md](verification.md).
 
 Согласованная основа: локальный веб-продукт с независимым рекомендательным движком. Ни модель, ни внешнее API не являются обязательным условием запуска.
 

@@ -65,3 +65,24 @@ llm_recommendations_alfa*.md
 models/
 .cache/
 audit/blind_eval_report.md
+
+# Local assistant configuration is not part of the submission.
+AGENTS.md
+**/AGENTS.md
+CLAUDE.md
+**/CLAUDE.md
+GEMINI.md
+**/GEMINI.md
+.github/copilot-instructions.md
+.codex/
+.claude/
+.agents/
+.opencode/
+.cursor/
+.cursorrules
+docs/STATUS.md
+docs/NEXT.md
+docs/TEAM.md
+docs/plan.md
+docs/worklog.md
+docs/assistant-tasks.md
